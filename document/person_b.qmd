@@ -38,5 +38,56 @@ phones_clean <- phones |>
 ```{r}
 nrow(phones_clean)
 levels(phones_clean$brand_group)
-View(phones_clean)
+```
+
+## Split Data
+
+```{r}
+set.seed(41352)
+phone_split <- phones_clean |> initial_split(prop=0.75)
+phone_training <- phone_split |> training()
+phone_test <- phone_split |> testing()
+```
+
+## Prepocessing recipe
+
+```{r}
+phone_recipe <- recipe(log_price ~ ., data = phone_training) |>
+  step_normalize(processor_speed, ram_capacity, internal_memory, refresh_rate, fast_charging, primary_camera_rear, primary_camera_front) |>
+  step_pca(processor_speed, ram_capacity, internal_memory, refresh_rate, fast_charging, primary_camera_rear, primary_camera_front, threshold = 0.7, id = "pca") |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors())
+```
+
+## Prep recipe
+
+```{r}
+phone_prep <- phone_recipe |> prep()
+```
+
+## Variance explained
+
+```{r}
+var_tbl <- tidy(phone_prep, id = "pca", type = "variance")
+```
+
+```{r}
+var_tbl |> 
+  filter(terms %in% c("percent variance", "cumulative percent variance")) |>
+  pivot_wider(names_from = terms, values_from = value) |>
+  gt()
+```
+
+```{r}
+var_tbl |>
+  filter(terms == "percent variance") |>
+  ggplot(aes(component, value)) +
+  geom_col() +
+  labs(x = "Component", y = "% of variance", title = "Scree plot")
+```
+
+```{r}
+bake(phone_prep, new_data = NULL) |>
+  select(starts_with("PC")) |>
+  ncol()
 ```
