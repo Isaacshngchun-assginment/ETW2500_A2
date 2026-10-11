@@ -1,0 +1,42 @@
+---
+title: "Person B"
+format: revealjs
+editor: visual
+---
+
+## Packages
+
+```{r}
+library(pacman)
+p_load(tidyverse,tidymodels,here,gt)
+```
+
+## Load Data
+
+```{r}
+phones <- here("data/smartphone_cleaned_v5.csv") |>
+  read_csv(show_col_type=FALSE)
+```
+
+## Data Cleaning
+
+```{r}
+phones_clean <- phones |>
+  mutate(
+    fast_charging = if_else(fast_charging_available == 0, 0, fast_charging),
+    log_price = log(price),
+    brand_group = fct_lump_n(brand_name, n=5),
+    has_5g = factor(has_5g),
+    has_nfc = factor(has_nfc)
+  ) |>
+  select(
+    log_price, processor_speed, ram_capacity, internal_memory, refresh_rate, fast_charging, primary_camera_rear, primary_camera_front, rating, battery_capacity, has_5g, has_nfc, brand_group
+  ) |>
+  na.omit()
+```
+
+```{r}
+nrow(phones_clean)
+levels(phones_clean$brand_group)
+View(phones_clean)
+```
