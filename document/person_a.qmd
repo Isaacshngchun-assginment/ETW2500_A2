@@ -1,0 +1,303 @@
+---
+title: "Person A - Smartphone Specifications and Pricing"
+subtitle: "ETW2500 Assignment 2"
+format:
+  revealjs:
+    slide-number: true
+    transition: fade
+    code-fold: true
+execute:
+  echo: false
+  warning: false
+  message: false
+editor: visual
+---
+
+<!-- Replace these placeholders with the final names, with the group leader first. -->
+**Presenters:** Person A (leader), Person B, Person C, Person D
+
+```{r}
+#| label: setup
+library(pacman)
+p_load(tidyverse, tidymodels, here, gt)
+tidymodels_prefer()
+
+# Replace 41352 with the last five digits of the group leader's student ID.
+set.seed(41352)
+
+phones <- here("data/smartphone_cleaned_v5.csv") |>
+  read_csv(show_col_types = FALSE)
+
+phones_clean <- phones |>
+  mutate(
+    fast_charging = if_else(fast_charging_available == 0, 0, fast_charging),
+    log_price = log(price),
+    brand_group = fct_lump_n(brand_name, n = 5),
+    has_5g = factor(has_5g),
+    has_nfc = factor(has_nfc)
+  ) |>
+  select(
+    log_price, processor_speed, ram_capacity, internal_memory,
+    refresh_rate, fast_charging, primary_camera_rear,
+    primary_camera_front, rating, battery_capacity, has_5g,
+    has_nfc, brand_group
+  ) |>
+  na.omit()
+
+phone_split <- initial_split(phones_clean, prop = 0.75)
+phone_training <- training(phone_split)
+phone_test <- testing(phone_split)
+
+phone_recipe <- recipe(log_price ~ ., data = phone_training) |>
+  step_normalize(
+    processor_speed, ram_capacity, internal_memory, refresh_rate,
+    fast_charging, primary_camera_rear, primary_camera_front
+  ) |>
+  step_pca(
+    processor_speed, ram_capacity, internal_memory, refresh_rate,
+    fast_charging, primary_camera_rear, primary_camera_front,
+    threshold = 0.7, id = "pca"
+  ) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors())
+
+phone_prep <- prep(phone_recipe)
+
+# Note: bake() returns the PCA scores and the dummy-coded regression
+# predictors. The original grouping variables are retained separately below
+# only for descriptive comparisons.
+pc_scores <- phone_training |>
+  select(has_5g, brand_group) |>
+  bind_cols(
+    bake(phone_prep, new_data = phone_training) |>
+      select(starts_with("PC"))
+  )
+var_tbl <- tidy(phone_prep, id = "pca", type = "variance")
+loading_tbl <- tidy(phone_prep, id = "pca", type = "coef")
+```
+
+# Dataset and research context
+
+## Business problem
+
+Smartphone manufacturers and retailers need to understand which combinations of
+technical specifications are linked to higher prices. Many specifications are
+related. For example, phones with more RAM may also have faster processors,
+larger storage, and better displays. PCA summarises these related specifications
+into a smaller number of meaningful components.
+
+This is an observational analysis. The results describe associations between
+specifications and price. They do not prove that a particular specification
+causes a higher price.
+
+## Dataset
+
+The dataset contains **`r nrow(phones)` smartphone models** and **25 variables**.
+These variables describe prices, ratings, hardware specifications, connectivity
+features, and brands. We converted unavailable fast-charging values to zero for
+phones that do not support fast charging. After removing incomplete records,
+**`r nrow(phones_clean)` models** remain for the analysis.
+
+Source: [Smartphone Models Dataset on Kaggle](https://www.kaggle.com/datasets/abdurrahman22224/smartphone-new-data).
+
+```{r}
+#| label: tbl-overview
+#| tbl-cap: "Overview of the smartphone dataset."
+overview_tbl <- tibble(
+  measure = c("Number of rows", "Number of columns", "Training rows", "Testing rows"),
+  value = c(nrow(phones), ncol(phones), nrow(phone_training), nrow(phone_test))
+)
+
+overview_tbl |>
+  gt()
+```
+
+## Variables used
+
+| Analysis role | Variables | Type |
+|---|---|---|
+| PCA inputs | `processor_speed`, `ram_capacity`, `internal_memory`, `refresh_rate`, `fast_charging`, `primary_camera_rear`, `primary_camera_front` | Numeric |
+| Regression outcome | `log_price` | Numeric |
+| Additional predictors | `rating`, `battery_capacity` | Numeric |
+| Additional predictors | `has_5g`, `has_nfc`, `brand_group` | Categorical |
+
+The model uses `log_price` because smartphone prices are right-skewed. Taking
+the logarithm reduces the influence of extremely expensive models and makes the
+regression coefficients easier to interpret as approximate percentage changes.
+
+# Objectives and significance
+
+## Objectives
+
+1. Summarise related smartphone specifications into principal components and
+   explain what the retained components represent.
+2. Examine how the retained components, ratings, battery capacity, connectivity
+   features, and brand group are associated with smartphone price.
+
+## Why this matters
+
+- **Manufacturers** can identify specification bundles associated with premium
+  pricing and use this information when positioning new products.
+- **Retailers** can compare products more consistently when setting price ranges
+  and selecting models for different market segments.
+- **Consumers and analysts** can compare technical specifications more easily by
+  using a smaller number of meaningful dimensions.
+
+# Exploratory data analysis
+
+## Price distribution
+
+```{r}
+#| label: fig-price
+#| fig-cap: "Distribution of smartphone prices before and after the log transformation."
+price_plot_data <- phones |>
+  transmute(
+    price,
+    log_price = log(price)
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "measure",
+    values_to = "value"
+  )
+
+ggplot(price_plot_data, aes(value)) +
+  geom_histogram(bins = 30, fill = "#2C7FB8", colour = "white") +
+  facet_wrap(~ measure, scales = "free", ncol = 1) +
+  labs(x = NULL, y = "Number of models") +
+  theme_minimal(base_size = 16)
+```
+
+The raw price distribution is strongly right-skewed. Most models are in the
+lower and middle price ranges, while fewer models are premium products. The log
+transformation compresses the upper tail and provides a more suitable outcome
+for the regression.
+
+## Missing values and specification correlations
+
+```{r}
+#| label: tbl-missing
+#| tbl-cap: "Missing values in variables used by the analysis before cleaning."
+missing_tbl <- phones |>
+  summarise(across(
+    c(
+      price, processor_speed, ram_capacity, internal_memory, refresh_rate,
+      fast_charging, primary_camera_rear, primary_camera_front,
+      rating, battery_capacity
+    ),
+    ~ sum(is.na(.x))
+  )) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = "missing_values"
+  )
+
+missing_tbl |>
+  gt()
+```
+
+```{r}
+#| label: fig-correlation
+#| fig-cap: "Correlations among the numerical variables used to develop the PCA components."
+pca_vars <- phones_clean |>
+  select(
+    processor_speed, ram_capacity, internal_memory, refresh_rate,
+    fast_charging, primary_camera_rear, primary_camera_front
+  )
+
+correlation_tbl <- cor(pca_vars, use = "pairwise.complete.obs") |>
+  as.data.frame() |>
+  rownames_to_column("variable_1") |>
+  pivot_longer(
+    -variable_1,
+    names_to = "variable_2",
+    values_to = "correlation"
+  )
+
+ggplot(correlation_tbl, aes(variable_1, variable_2, fill = correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(
+    low = "#B2182B", mid = "white", high = "#2166AC",
+    limits = c(-1, 1)
+  ) +
+  coord_equal() +
+  labs(x = NULL, y = NULL, fill = "Correlation") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The correlation matrix shows that several specifications move together. This
+supports the use of PCA because related technical measures can be summarised
+with a smaller set of component scores.
+
+# PCA scores across product groups
+
+## Comparing retained component scores
+
+The recipe retains enough principal components to explain at least 70% of the
+standardised variation. The table below compares the mean component scores for
+5G and non-5G models.
+
+> **Note on the PCA workflow:** In the class recipe, `step_pca()` is applied
+> before `step_dummy()`. Therefore, after `bake()`, the categorical variables
+> `has_5g` and `brand_group` are represented as dummy variables rather than
+> retained with their original names. We attach the original training labels
+> back to the component scores only so that we can describe PC differences
+> across 5G and brand groups. This does not change the PCA calculation.
+
+```{r}
+#| label: tbl-pc-5g
+#| tbl-cap: "Mean retained principal-component scores by 5G availability."
+pc_names <- names(pc_scores)[str_detect(names(pc_scores), "^PC")]
+
+pc_by_5g <- pc_scores |>
+  group_by(has_5g) |>
+  summarise(
+    across(all_of(pc_names), mean),
+    .groups = "drop"
+  )
+
+pc_by_5g |>
+  gt() |>
+  fmt_number(columns = all_of(pc_names), decimals = 2)
+```
+
+The group with the larger mean score on a component has higher standardised
+values for the original specifications that load positively on that component.
+This comparison is descriptive. It shows how product groups differ in their
+specification profiles, but it does not estimate a price effect by itself.
+
+```{r}
+#| label: fig-pc-brand
+#| fig-cap: "PC1 scores across the grouped smartphone brands."
+pc_scores |>
+  ggplot(aes(brand_group, PC1, fill = brand_group)) +
+  geom_boxplot(show.legend = FALSE) +
+  labs(
+    x = "Brand group",
+    y = "PC1 score",
+    title = "Distribution of PC1 scores by brand group"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+The final interpretation of PC1 and the other retained components must use the
+loading results from the PCA section. Component names should be based on the
+variables with the largest absolute loadings rather than being assigned in
+advance.
+
+# PCA and regression sections
+
+The next slides should include Person B's PCA-preparation and explained-variance
+results, Person C's loading interpretation, and Person D's regression results.
+The shared objects created above are `phone_prep`, `pc_scores`, `var_tbl`, and
+`loading_tbl`, so those sections can use the same prepared analysis.
+
+## References
+
+- Abdur Rahman. (2023). *Smartphone Models Dataset*. Kaggle.
+  <https://www.kaggle.com/datasets/abdurrahman22224/smartphone-new-data>
+- Wickham, H., et al. (2019). *Welcome to the tidyverse*. Journal of Open
+  Source Software, 4(43), 1686.
