@@ -1,93 +1,259 @@
 ---
-title: "Person B"
-format: revealjs
+title: "Person B - Data Preparation and PCA"
+subtitle: "ETW2500 Assignment 2"
+format:
+  revealjs:
+    # NOTE: Person A owns the final YAML. This one is only so that
+    # this file renders on its own. No logo or css file is needed.
+    theme: default
+    slide-number: true
+    transition: fade
+    background-transition: fade
+    incremental: false
+    fig-align: center
+    footer: "ETW2500 Unsupervised Learning"
+    preview-links: true
+execute:
+  echo: false
+  warning: false
+  message: false
 editor: visual
 ---
 
-## Packages
-
 ```{r}
+#| label: setup
 library(pacman)
-p_load(tidyverse,tidymodels,here,gt)
-```
+p_load(tidyverse, tidymodels, here, gt, GGally)
+tidymodels_prefer()
 
-## Load Data
-
-```{r}
+# load data
 phones <- here("data/smartphone_cleaned_v5.csv") |>
-  read_csv(show_col_type=FALSE)
+read_csv(show_col_types = FALSE)
 ```
 
-## Data Cleaning
-
 ```{r}
+# 1. Data Cleaning
+# - remove the 2 luxury editions where their price comes from gold/materials
+# - perform transformation, log the price as it is heavily right-skewed
+# - recode 5G and NFC to Yes/No so the dummy names are readable
+# - keeps the 7 biggest brands, pool the rest into "Other", and make "xiami" the base reference level.
+# - keeps only the 12 variables used, then drop incomplete rows.
 phones_clean <- phones |>
+  filter(!model %in% c("Vertu Signature Touch", 
+                       "Xiaomi Redmi K20 Pro Signature Edition")) |>
   mutate(
-    fast_charging = if_else(fast_charging_available == 0, 0, fast_charging),
     log_price = log(price),
-    brand_group = fct_lump_n(brand_name, n=5),
-    has_5g = factor(has_5g),
-    has_nfc = factor(has_nfc)
+    has_5g = factor(if_else(as.logical(has_5g), "Yes", "No"), 
+                    levels = c("No", "Yes")),
+    has_nfc = factor(if_else(as.logical(has_nfc), "Yes", "No"),
+                     levels = c("No", "Yes")),
+    brand_group = fct_relevel(fct_lump_n(brand_name, n = 7), "xiaomi")
   ) |>
-  select(
-    log_price, processor_speed, ram_capacity, internal_memory, refresh_rate, fast_charging, primary_camera_rear, primary_camera_front, rating, battery_capacity, has_5g, has_nfc, brand_group
+  select(log_price, processor_speed, ram_capacity, internal_memory, refresh_rate, primary_camera_rear, primary_camera_front, battery_capacity, screen_size, has_5g, has_nfc, brand_group
   ) |>
   na.omit()
 ```
 
 ```{r}
-nrow(phones_clean)
-levels(phones_clean$brand_group)
-```
-
-## Split Data
-
-```{r}
+# 2. Split: 75% training, 25% testing
 set.seed(41352)
-phone_split <- phones_clean |> initial_split(prop=0.75)
-phone_training <- phone_split |> training()
-phone_test <- phone_split |> testing()
+phone_split <- initial_split(phones_clean, prop = 0.75, strata = log_price)
+phone_training <- training(phone_split)
+phone_test <- testing(phone_split)
 ```
 
-## Prepocessing recipe
-
 ```{r}
+# 3. Recipe: normalise -> PCA on the 6 specifications -> dummy variables -> drop constants
 phone_recipe <- recipe(log_price ~ ., data = phone_training) |>
-  step_normalize(processor_speed, ram_capacity, internal_memory, refresh_rate, fast_charging, primary_camera_rear, primary_camera_front) |>
-  step_pca(processor_speed, ram_capacity, internal_memory, refresh_rate, fast_charging, primary_camera_rear, primary_camera_front, threshold = 0.7, id = "pca") |>
+  step_normalize(all_numeric_predictors()) |>
+  step_pca(processor_speed, ram_capacity, internal_memory, refresh_rate, primary_camera_rear, primary_camera_front, threshold = 0.7, id = "pca") |>
   step_dummy(all_nominal_predictors()) |>
   step_zv(all_predictors())
 ```
 
-## Prep recipe
-
 ```{r}
-phone_prep <- phone_recipe |> prep()
+# 4. Prep
+phone_prep <- prep(phone_recipe)
 ```
 
-## Variance explained
+# Data preparation and PCA {background-color="#1F4E79"}
+
+## Are the specifications correlated? {.smaller}
 
 ```{r}
+#| label: corr-numbers
+# Numbers used in the text of this slide
+pca_vars <- phones_clean |>
+  select(processor_speed, ram_capacity, internal_memory, refresh_rate, primary_camera_rear, primary_camera_front)
+
+cor_long <- cor(pca_vars) |>
+  as.data.frame() |>
+  rownames_to_column("v1") |>
+  pivot_longer(-v1, names_to = "v2", values_to = "r") |>
+  filter(v1 < v2)            # keep each pair once
+
+top_pair <- slice_max(cor_long, r, n = 1)
+low_pair <- slice_min(cor_long, r, n = 1)
+```
+
+::::: columns
+::: {.column width="55%"}
+```{r}
+#| label: fig-corr
+#| fig-cap: "Correlations among the six specifications used in the PCA."
+#| fig-height: 5
+ggcorr(pca_vars, label = TRUE, label_round = 2)
+```
+:::
+
+:::: {.column width="45%"} 
+@fig-corr shows that six specifications are positively correlated. The strongest correlation is between `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`), and the weakest is between `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
+
+::: fragment
+Variables that move together carry overlapping information. Therefore PCA is suitable, because it combines them into fewer uncorrelated components.
+:::
+:::: 
+::::::
+
+::: notes 
+The heatmap is the evidence that PCA suits the data. If the variables were unrelated, PCA would not be able to summarise them.
+:::
+
+## Data preparation {.smaller}
+
+```{r}
+#| label: prep-numbers
+n_raw   <- nrow(phones)
+n_clean <- nrow(phones_clean)
+n_miss  <- n_raw - 2 - n_clean
+```
+
+::::: columns
+::: {.column width="50%"}
+```{r}
+#| label: tbl-prep
+#| tbl-cap: "Number of smartphones at each preparation step."
+tibble(
+  step = c(
+    "Original dataset",
+    "Luxury editions removed",
+    "Incomplete records removed",
+    "Used in the analysis",
+    "Training set (75%)",
+    "Testing set (25%)"
+  ),
+  smartphones = c(n_raw, 2, n_miss, n_clean, nrow(phone_training), nrow(phone_test))
+) |>
+  gt() |>
+  cols_label(step = "Step", smartphones = "Smartphones")
+```
+:::
+
+::: {.column width="50%"} 
+@tbl-prep shows that `r n_clean` of the `r n_raw` smartphones are used.
+
+- Two luxury editions were removed because their prices reflect gold and premium materials rather than specifications.
+- Incomplete records were removed because PCA cannot handle missing values.
+- Price was logged because it is strongly right-skewed.
+:::
+:::::
+
+::: notes 
+Brand was reduced to the 7 largest brands plus Other, with xiaomi as the comparison group. 5G and NFC were recoded to No and Yes. 
+:::
+
+## Method and justification {.smaller}
+
+| Choice | Reason |
+|------------------------------------|------------------------------------|
+| **PCA** on six specifications | The specifications overlap strongly, so using them directly in a regression would cause multicollinearity. PCA replaces them with a few uncorrelated components. |
+| **Standardise** before PCA | The variables use different units (GB, GHz, Hz, MP). Without standardising, variables with large numbers would dominate the components. |
+| **Linear regression** | The business question is what drives price, and log price is a numeric outcome. |
+| **Variables left out** | Rating is almost a copy of the specifications. Fast charging is missing for most iPhone, which would remove most Apple phones. |
+
+::: notes 
+Normalise comes before the dummy step so that the 0/1 dummy variables are not rescaled. 
+:::
+
+## Preprocessing steps {.smaller}
+
+| Step | What it does | Why |
+|------------------------|------------------------|------------------------|
+| 1\. Standardise | Puts all numeric predictors on the same scale | Fair weighting in PCA |
+| 2\. PCA | Combines the six specifications into components, keeping enough to explain at least 70% of the variance | Removes overlap, keeps the key information |
+| 3\. Dummy variables | Turns 5G, NFC and brand group into 0/1 columns | Regression needs numbers |
+| 4\. Remove constants | Drops any column with a single value | Avoids useless predictors |
+
+::: fragment 
+The recipe is learned from the training data only and then applied to the testing data. This avoids information leaking from the testing set. 
+:::
+
+## Variance explained {.smaller}
+
+```{r}
+#| label: var-numbers
 var_tbl <- tidy(phone_prep, id = "pca", type = "variance")
+
+# number of components kept = number of PC columns after bake()
+n_pc <- bake(phone_prep, new_data = NULL) |>
+select(starts_with("PC")) |>
+ncol()
+
+pc1_var <- var_tbl |>
+filter(terms == "percent variance", component == 1) |>
+pull(value)
+
+cum_var <- var_tbl |>
+filter(terms == "cumulative percent variance", component == n_pc) |>
+pull(value)
 ```
 
+::::: columns
+::: {.column width="50%"}
 ```{r}
-var_tbl |> 
+#| label: tbl-var
+#| tbl-cap: "Variance explained by each principal component."
+var_tbl |>
   filter(terms %in% c("percent variance", "cumulative percent variance")) |>
-  pivot_wider(names_from = terms, values_from = value) |>
-  gt()
+  mutate(component = paste0("PC", component)) |>
+  pivot_wider(id_cols = component, names_from = terms, values_from = value) |>
+  gt() |>
+  cols_label(component = "Component",
+             `percent variance` = "Variance (%)",
+             `cumulative percent variance` = "Cumulative (%)") |>
+  fmt_number(columns = c(`percent variance`, `cumulative percent variance`),
+             decimals = 1)
 ```
+:::
 
+::: {.column width="50%"}
 ```{r}
+#| label: fig-scree
+#| fig-cap: "Percentage of variance explained by each component."
+#| fig-height: 4
 var_tbl |>
   filter(terms == "percent variance") |>
   ggplot(aes(component, value)) +
-  geom_col() +
-  labs(x = "Component", y = "% of variance", title = "Scree plot")
+  geom_col(fill = "#2C7FB8") +
+  scale_x_continuous(breaks = 1:6) +
+  labs(x = "Component", y = "Percentage of variance") +
+  theme_minimal(base_size = 16)
 ```
+:::
+:::::
 
-```{r}
-bake(phone_prep, new_data = NULL) |>
-  select(starts_with("PC")) |>
-  ncol()
-```
+## Number of components retained
+
+@tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications.
+
+::: fragment
+The first `r n_pc` components together explain `r round(cum_var, 1)`%. Therefore, `r n_pc` components are retained, which meets the 70% threshold while keeping the components easy to interpret.
+:::
+
+::: fragment 
+The remaining components add little extra information. The next step is to examine the loadings to describe what each retained component represents.
+:::
+
+::: notes 
+The 70% threshold is set in step_pca(). R keeps the smallest number of components whose cumulative variance reaches 70%.
+:::
