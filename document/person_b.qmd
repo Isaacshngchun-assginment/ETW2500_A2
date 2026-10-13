@@ -3,21 +3,21 @@ title: "Person B - Data Preparation and PCA"
 subtitle: "ETW2500 Assignment 2"
 format:
   revealjs:
-    # NOTE: Person A owns the final YAML. This one is only so that
-    # this file renders on its own. No logo or css file is needed.
     theme: default
     slide-number: true
     transition: fade
-    background-transition: fade
+    chalkboard: true
+    preview-links: true
     incremental: false
     fig-align: center
-    footer: "ETW2500 Unsupervised Learning"
-    preview-links: true
+    code-line-numbers: true
+    background-transition: fade
+    footer: "ETW2500 Unsupervised Learning | Group 29"
+editor: visual
 execute:
   echo: false
   warning: false
   message: false
-editor: visual
 ---
 
 ```{r}
@@ -83,39 +83,67 @@ phone_prep <- prep(phone_recipe)
 ```{r}
 #| label: corr-numbers
 # Numbers used in the text of this slide
-pca_vars <- phones_clean |>
-  select(processor_speed, ram_capacity, internal_memory, refresh_rate, primary_camera_rear, primary_camera_front)
+nice_names <- c(
+  processor_speed = "Pocessor speed",
+  ram_capacity = "RAM",
+  internal_memory = "Internal memory",
+  refresh_rate = "Refresh rate",
+  primary_camera_rear = "Rear camera",
+  primary_camera_front = "Front camera"
+)
 
-cor_long <- cor(pca_vars) |>
+pca_vars <- phones_clean |>
+  select(all_of(names(nice_names)))
+
+# Full correlation table for heatmap
+cor_full <- cor(pca_vars) |>
   as.data.frame() |>
   rownames_to_column("v1") |>
   pivot_longer(-v1, names_to = "v2", values_to = "r") |>
-  filter(v1 < v2)            # keep each pair once
+  mutate(v1 = unname(nice_names[v1]),
+         v2 = unname(nice_names[v2]))
+
+# One copy of each pair (v1 < v2) for the strongest and weakest pair
+cor_long <- cor_full |>
+  filter(v1 < v2)
 
 top_pair <- slice_max(cor_long, r, n = 1)
 low_pair <- slice_min(cor_long, r, n = 1)
+mean_r <- mean(cor_long$r)
 ```
 
-::::: columns
+:::::: columns
 ::: {.column width="55%"}
 ```{r}
 #| label: fig-corr
 #| fig-cap: "Correlations among the six specifications used in the PCA."
+#| fig-width: 7
 #| fig-height: 5
-ggcorr(pca_vars, label = TRUE, label_round = 2)
+cor_full |>
+  mutate(across(c(v1, v2), ~ factor(.x, levels = nice_names))) |>
+  ggplot(aes(v1, v2, fill = r)) +
+  geom_tile(colour = "white") +
+  geom_text(aes(label = round(r, 2), colour = r > 0.8), size = 4) +
+  scale_colour_manual(values = c("black", "white"), guide = "none") +
+  scale_fill_gradient2(low = "#B2182B", mid = "white", high = "#2166AC",
+                       midpoint = 0, limits = c(-1, 1)) +
+  coord_equal() +
+  labs(x = NULL, y = NULL, fill = "Correlation") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))
 ```
 :::
 
-:::: {.column width="45%"} 
-@fig-corr shows that six specifications are positively correlated. The strongest correlation is between `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`), and the weakest is between `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
+:::: {.column width="45%"}
+@fig-corr shows that the correlations among the six specifications range from `r round(low_pair$r, 2)` to `r round(top_pair$r, 2)`, with an average of `r round(mean_r, 2)`. The strongest pair is `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`), and the weakest pair is `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
 
 ::: fragment
 Variables that move together carry overlapping information. Therefore PCA is suitable, because it combines them into fewer uncorrelated components.
 :::
-:::: 
+::::
 ::::::
 
-::: notes 
+::: notes
 The heatmap is the evidence that PCA suits the data. If the variables were unrelated, PCA would not be able to summarise them.
 :::
 
@@ -145,21 +173,27 @@ tibble(
   smartphones = c(n_raw, 2, n_miss, n_clean, nrow(phone_training), nrow(phone_test))
 ) |>
   gt() |>
-  cols_label(step = "Step", smartphones = "Smartphones")
+  cols_label(step = "Step", smartphones = "Smartphones") |>
+  opt_table_outline() |>
+  tab_options(table.font.size = px(18),
+              column_labels.font.weight = "bold",
+              column_labels.vlines.style = "solid",
+              table_body.vlines.style = "solid")
 ```
 :::
 
-::: {.column width="50%"} 
+::: {.column width="50%"}
 @tbl-prep shows that `r n_clean` of the `r n_raw` smartphones are used.
 
-- Two luxury editions were removed because their prices reflect gold and premium materials rather than specifications.
-- Incomplete records were removed because PCA cannot handle missing values.
-- Price was logged because it is strongly right-skewed.
+- Two **luxury editions** were removed because their prices reflect gold and premium materials rather than specifications.
+- **Incomplete records** were removed because PCA cannot handle missing values.
+- **Price** was logged because it is strongly right-skewed.
+- **Brand** was reduced to the seven largest brands plus Other.
 :::
 :::::
 
-::: notes 
-Brand was reduced to the 7 largest brands plus Other, with xiaomi as the comparison group. 5G and NFC were recoded to No and Yes. 
+::: notes
+5G and NFC were recoded to No and Yes.Xiaomi is the comparison brand in the regression. The recipe is learned from the training set only.
 :::
 
 ## Method and justification {.smaller}
@@ -171,8 +205,8 @@ Brand was reduced to the 7 largest brands plus Other, with xiaomi as the compari
 | **Linear regression** | The business question is what drives price, and log price is a numeric outcome. |
 | **Variables left out** | Rating is almost a copy of the specifications. Fast charging is missing for most iPhone, which would remove most Apple phones. |
 
-::: notes 
-Normalise comes before the dummy step so that the 0/1 dummy variables are not rescaled. 
+::: notes
+Normalise comes before the dummy step so that the 0/1 dummy variables are not rescaled.
 :::
 
 ## Preprocessing steps {.smaller}
@@ -184,9 +218,11 @@ Normalise comes before the dummy step so that the 0/1 dummy variables are not re
 | 3\. Dummy variables | Turns 5G, NFC and brand group into 0/1 columns | Regression needs numbers |
 | 4\. Remove constants | Drops any column with a single value | Avoids useless predictors |
 
-::: fragment 
-The recipe is learned from the training data only and then applied to the testing data. This avoids information leaking from the testing set. 
+:::: fragment
+::: {.callout-tip title="No information leakage"}
+The recipe is learned from the training data only and then applied to the testing data.
 :::
+::::
 
 ## Variance explained {.smaller}
 
@@ -206,6 +242,12 @@ pull(value)
 cum_var <- var_tbl |>
 filter(terms == "cumulative percent variance", component == n_pc) |>
 pull(value)
+
+var_wide <- var_tbl |>
+  filter(terms %in% c("percent variance", "cumulative percent variance")) |>
+  select(component, terms, value) |>
+  pivot_wider(names_from = terms, values_from = value) |>
+  mutate(component = paste0("PC", component))
 ```
 
 ::::: columns
@@ -213,16 +255,18 @@ pull(value)
 ```{r}
 #| label: tbl-var
 #| tbl-cap: "Variance explained by each principal component."
-var_tbl |>
-  filter(terms %in% c("percent variance", "cumulative percent variance")) |>
-  mutate(component = paste0("PC", component)) |>
-  pivot_wider(id_cols = component, names_from = terms, values_from = value) |>
+var_wide |>
   gt() |>
   cols_label(component = "Component",
              `percent variance` = "Variance (%)",
              `cumulative percent variance` = "Cumulative (%)") |>
   fmt_number(columns = c(`percent variance`, `cumulative percent variance`),
-             decimals = 1)
+             decimals = 1) |>
+  opt_table_outline() |>
+  tab_options(table.font.size = px(18),
+              column_labels.font.weight = "bold",
+              column_labels.vlines.style = "solid",
+              table_body.vlines.style = "solid")
 ```
 :::
 
@@ -230,12 +274,10 @@ var_tbl |>
 ```{r}
 #| label: fig-scree
 #| fig-cap: "Percentage of variance explained by each component."
-#| fig-height: 4
-var_tbl |>
-  filter(terms == "percent variance") |>
-  ggplot(aes(component, value)) +
+#| fig-height: 7
+ggplot(var_wide, aes(component, `percent variance`)) +
   geom_col(fill = "#2C7FB8") +
-  scale_x_continuous(breaks = 1:6) +
+  geom_text(aes(label = round(`percent variance`, 1)), vjust = -0.4) +
   labs(x = "Component", y = "Percentage of variance") +
   theme_minimal(base_size = 16)
 ```
@@ -244,16 +286,16 @@ var_tbl |>
 
 ## Number of components retained
 
-@tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications.
+@tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications. The first `r n_pc` components together explain `r round(cum_var, 1)`%.
+
+::: {.callout-tip title="Decision"}
+`r n_pc` components are retained. This meets the 70% threshold while keeping the components easy to interpret. The remaining components add little extra information.
+:::
 
 ::: fragment
-The first `r n_pc` components together explain `r round(cum_var, 1)`%. Therefore, `r n_pc` components are retained, which meets the 70% threshold while keeping the components easy to interpret.
+The next step is to examine the loadings to describe what each retained component represents.
 :::
 
-::: fragment 
-The remaining components add little extra information. The next step is to examine the loadings to describe what each retained component represents.
-:::
-
-::: notes 
+::: notes
 The 70% threshold is set in step_pca(). R keeps the smallest number of components whose cumulative variance reaches 70%.
 :::
