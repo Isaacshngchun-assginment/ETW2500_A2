@@ -21,9 +21,9 @@ execute:
 ---
 
 ```{r}
-#| label: setup
+#| label: pipeline
 library(pacman)
-p_load(tidyverse, tidymodels, here, gt, GGally)
+p_load(tidyverse, tidymodels, here, gt)
 tidymodels_prefer()
 
 # load data
@@ -78,8 +78,6 @@ phone_prep <- prep(phone_recipe)
 
 # Data preparation and PCA {background-color="#1F4E79"}
 
-## Are the specifications correlated? {.smaller}
-
 ```{r}
 #| label: corr-numbers
 # Numbers used in the text of this slide
@@ -112,7 +110,9 @@ low_pair <- slice_min(cor_long, r, n = 1)
 mean_r <- mean(cor_long$r)
 ```
 
-:::::: columns
+## Are the specifications correlated? {.smaller}
+
+::::::: columns
 ::: {.column width="55%"}
 ```{r}
 #| label: fig-corr
@@ -134,14 +134,24 @@ cor_full |>
 ```
 :::
 
-:::: {.column width="45%"}
-@fig-corr shows that the correlations among the six specifications range from `r round(low_pair$r, 2)` to `r round(top_pair$r, 2)`, with an average of `r round(mean_r, 2)`. The strongest pair is `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`), and the weakest pair is `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
+::::: {.column width="45%"}
+::: incremental
+- @fig-corr shows that the **correlations** among the six specifications range from `r round(low_pair$r, 2)` to `r round(top_pair$r, 2)`, with an average of `r round(mean_r, 2)`.
 
-::: fragment
-Variables that move together carry overlapping information. Therefore PCA is suitable, because it combines them into fewer uncorrelated components.
+- The **strongest pair** is `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`), and the **weakest pair** is `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
+
+- Variables that move together carry **overlapping information**.
+
+- **PCA** is suitable, as it combines them into **fewer** uncorrelated components.
 :::
-::::
-::::::
+
+. . .
+
+::: {.callout-tip title="So what"}
+Phones can be compared on a few overall specification levels instead of six separate numbers.
+:::
+:::::
+:::::::
 
 ::: notes
 The heatmap is the evidence that PCA suits the data. If the variables were unrelated, PCA would not be able to summarise them.
@@ -156,7 +166,7 @@ n_clean <- nrow(phones_clean)
 n_miss  <- n_raw - 2 - n_clean
 ```
 
-::::: columns
+::::::: columns
 ::: {.column width="50%"}
 ```{r}
 #| label: tbl-prep
@@ -182,15 +192,23 @@ tibble(
 ```
 :::
 
-::: {.column width="50%"}
+::::: {.column width="50%"}
 @tbl-prep shows that `r n_clean` of the `r n_raw` smartphones are used.
 
+::: fragment
 - Two **luxury editions** were removed because their prices reflect gold and premium materials rather than specifications.
 - **Incomplete records** were removed because PCA cannot handle missing values.
 - **Price** was logged because it is strongly right-skewed.
 - **Brand** was reduced to the seven largest brands plus Other.
 :::
+
+. . .
+
+::: {.callout-tip title="So what"}
+The results describe how specifications related to price for typical smartphones.
+:::
 :::::
+:::::::
 
 ::: notes
 5G and NFC were recoded to No and Yes.Xiaomi is the comparison brand in the regression. The recipe is learned from the training set only.
@@ -219,7 +237,7 @@ Normalise comes before the dummy step so that the 0/1 dummy variables are not re
 | 4\. Remove constants | Drops any column with a single value | Avoids useless predictors |
 
 :::: fragment
-::: {.callout-tip title="No information leakage"}
+::: {.callout-tip title="So what"}
 The recipe is learned from the training data only and then applied to the testing data.
 :::
 ::::
@@ -251,7 +269,7 @@ var_wide <- var_tbl |>
 ```
 
 ::::: columns
-::: {.column width="50%"}
+::: {.column width="45%"}
 ```{r}
 #| label: tbl-var
 #| tbl-cap: "Variance explained by each principal component."
@@ -270,7 +288,7 @@ var_wide |>
 ```
 :::
 
-::: {.column width="50%"}
+::: {.column width="55%"}
 ```{r}
 #| label: fig-scree
 #| fig-cap: "Percentage of variance explained by each component."
@@ -284,17 +302,29 @@ ggplot(var_wide, aes(component, `percent variance`)) +
 :::
 :::::
 
-## Number of components retained
+::: notes
+Percent variance is the share of the total information that each component holds. PC1 always holds the most.
+:::
 
-@tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications. The first `r n_pc` components together explain `r round(cum_var, 1)`%.
+## Number of components retained {.smaller}
+
+::::: incremental
+@tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications.
+
+The first `r n_pc` components together explain `r round(cum_var, 1)`%.
 
 ::: {.callout-tip title="Decision"}
 `r n_pc` components are retained. This meets the 70% threshold while keeping the components easy to interpret. The remaining components add little extra information.
 :::
 
-::: fragment
-The next step is to examine the loadings to describe what each retained component represents.
+. . .
+
+::: {.callout-tip title="So what"}
+Each phone can now be described by `r n_pc` PC instead of six specifications, with little loss of information.
 :::
+
+The next step is to examine the loadings to describe what each retained component represents.
+:::::
 
 ::: notes
 The 70% threshold is set in step_pca(). R keeps the smallest number of components whose cumulative variance reaches 70%.
