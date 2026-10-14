@@ -23,7 +23,7 @@ execute:
 ```{r}
 #| label: pipeline
 library(pacman)
-p_load(tidyverse, tidymodels, here, gt)
+p_load(tidyverse, tidymodels, here, gt, GGally)
 tidymodels_prefer()
 
 # load data
@@ -36,8 +36,11 @@ read_csv(show_col_types = FALSE)
 # - remove the 2 luxury editions where their price comes from gold/materials
 # - perform transformation, log the price as it is heavily right-skewed
 # - recode 5G and NFC to Yes/No so the dummy names are readable
-# - keeps the 7 biggest brands, pool the rest into "Other", and make "xiami" the base reference level.
+# - keeps the 7 biggest brands, pool the rest into "Other", and make "xiaomi" the base reference level.
 # - keeps only the 12 variables used, then drop incomplete rows.
+pca_vars <- c("processor_speed", "ram_capacity", "internal_memory",
+              "refresh_rate", "primary_camera_rear", "primary_camera_front")
+
 phones_clean <- phones |>
   filter(!model %in% c("Vertu Signature Touch", 
                        "Xiaomi Redmi K20 Pro Signature Edition")) |>
@@ -49,8 +52,8 @@ phones_clean <- phones |>
                      levels = c("No", "Yes")),
     brand_group = fct_relevel(fct_lump_n(brand_name, n = 7), "xiaomi")
   ) |>
-  select(log_price, processor_speed, ram_capacity, internal_memory, refresh_rate, primary_camera_rear, primary_camera_front, battery_capacity, screen_size, has_5g, has_nfc, brand_group
-  ) |>
+  select(log_price, all_of(pca_vars), battery_capacity, screen_size, has_5g,
+         has_nfc, brand_group) |>
   na.omit()
 ```
 
@@ -64,16 +67,16 @@ phone_test <- testing(phone_split)
 
 ```{r}
 # 3. Recipe: normalise -> PCA on the 6 specifications -> dummy variables -> drop constants
-phone_recipe <- recipe(log_price ~ ., data = phone_training) |>
+phone_rec <- recipe(log_price ~ ., data = phone_training) |>
   step_normalize(all_numeric_predictors()) |>
-  step_pca(processor_speed, ram_capacity, internal_memory, refresh_rate, primary_camera_rear, primary_camera_front, threshold = 0.7, id = "pca") |>
+  step_pca(all_of(pca_vars), threshold = 0.7, id = "pca") |>
   step_dummy(all_nominal_predictors()) |>
   step_zv(all_predictors())
 ```
 
 ```{r}
 # 4. Prep
-phone_prep <- prep(phone_recipe)
+phone_prep <- prep(phone_rec)
 ```
 
 # Data preparation and PCA {background-color="#1F4E79"}
@@ -82,7 +85,7 @@ phone_prep <- prep(phone_recipe)
 #| label: corr-numbers
 # Numbers used in the text of this slide
 nice_names <- c(
-  processor_speed = "Pocessor speed",
+  processor_speed = "Processor speed",
   ram_capacity = "RAM",
   internal_memory = "Internal memory",
   refresh_rate = "Refresh rate",
@@ -90,11 +93,11 @@ nice_names <- c(
   primary_camera_front = "Front camera"
 )
 
-pca_vars <- phones_clean |>
-  select(all_of(names(nice_names)))
+pca_data <- phones_clean |>
+  select(all_of(pca_vars))
 
 # Full correlation table for heatmap
-cor_full <- cor(pca_vars) |>
+cor_full <- cor(pca_data) |>
   as.data.frame() |>
   rownames_to_column("v1") |>
   pivot_longer(-v1, names_to = "v2", values_to = "r") |>
@@ -112,46 +115,37 @@ mean_r <- mean(cor_long$r)
 
 ## Are the specifications correlated? {.smaller}
 
-::::::: columns
+:::::::: columns
 ::: {.column width="55%"}
 ```{r}
 #| label: fig-corr
 #| fig-cap: "Correlations among the six specifications used in the PCA."
-#| fig-width: 7
-#| fig-height: 5
-cor_full |>
-  mutate(across(c(v1, v2), ~ factor(.x, levels = nice_names))) |>
-  ggplot(aes(v1, v2, fill = r)) +
-  geom_tile(colour = "white") +
-  geom_text(aes(label = round(r, 2), colour = r > 0.8), size = 4) +
-  scale_colour_manual(values = c("black", "white"), guide = "none") +
-  scale_fill_gradient2(low = "#B2182B", mid = "white", high = "#2166AC",
-                       midpoint = 0, limits = c(-1, 1)) +
-  coord_equal() +
-  labs(x = NULL, y = NULL, fill = "Correlation") +
-  theme_minimal(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 40, hjust = 1))
+#| fig-width: 6.5
+#| fig-height: 4.2
+pca_data |>
+  rename_with(~ unname(nice_names[.x])) |>
+  ggpairs(upper = list(continuous = wrap("cor", size = 3.5)),
+          lower = list(continuous = wrap("points", size = 0.4, alpha = 0.3))) +
+  theme_bw(base_size = 9)
 ```
 :::
 
-::::: {.column width="45%"}
+:::::: {.column width="45%"}
 ::: incremental
 - @fig-corr shows that the **correlations** among the six specifications range from `r round(low_pair$r, 2)` to `r round(top_pair$r, 2)`, with an average of `r round(mean_r, 2)`.
 
-- The **strongest pair** is `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`), and the **weakest pair** is `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
+- **Strongest pair:** `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`); **weakest:** `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
 
-- Variables that move together carry **overlapping information**.
-
-- **PCA** is suitable, as it combines them into **fewer** uncorrelated components.
+- Variables move together (**overlapping information**), so **PCA** can combine them into **fewer** uncorrelated components.
 :::
 
-. . .
-
+:::: fragment
 ::: {.callout-tip title="So what"}
 Phones can be compared on a few overall specification levels instead of six separate numbers.
 :::
-:::::
-:::::::
+::::
+::::::
+::::::::
 
 ::: notes
 The heatmap is the evidence that PCA suits the data. If the variables were unrelated, PCA would not be able to summarise them.
@@ -166,8 +160,8 @@ n_clean <- nrow(phones_clean)
 n_miss  <- n_raw - 2 - n_clean
 ```
 
-::::::: columns
-::: {.column width="50%"}
+:::::::: columns
+::: {.column width="48%"}
 ```{r}
 #| label: tbl-prep
 #| tbl-cap: "Number of smartphones at each preparation step."
@@ -192,55 +186,94 @@ tibble(
 ```
 :::
 
-::::: {.column width="50%"}
+:::::: {.column width="52%"}
 @tbl-prep shows that `r n_clean` of the `r n_raw` smartphones are used.
 
-::: fragment
-- Two **luxury editions** were removed because their prices reflect gold and premium materials rather than specifications.
+::: incremental
+- Two **luxury editions** were removed because their prices reflect gold and premium materials not specifications.
+
 - **Incomplete records** were removed because PCA cannot handle missing values.
-- **Price** was logged because it is strongly right-skewed.
-- **Brand** was reduced to the seven largest brands plus Other.
+
+- **Price** was logged because it is strongly right-skewed, and **Brand** was reduced to the seven largest brands plus Other.
 :::
 
-. . .
-
+:::: fragment
 ::: {.callout-tip title="So what"}
 The results describe how specifications related to price for typical smartphones.
 :::
-:::::
-:::::::
+::::
+::::::
+::::::::
 
 ::: notes
-5G and NFC were recoded to No and Yes.Xiaomi is the comparison brand in the regression. The recipe is learned from the training set only.
+5G and NFC were recoded to No and Yes. Xiaomi is the comparison brand in the regression. The recipe is learned from the training set only.
 :::
 
 ## Method and justification {.smaller}
 
 | Choice | Reason |
 |------------------------------------|------------------------------------|
-| **PCA** on six specifications | The specifications overlap strongly, so using them directly in a regression would cause multicollinearity. PCA replaces them with a few uncorrelated components. |
-| **Standardise** before PCA | The variables use different units (GB, GHz, Hz, MP). Without standardising, variables with large numbers would dominate the components. |
+| **PCA** on six specifications | The specifications overlap (@fig-corr), so using them directly would cause multicollinearity. PCA replaces them with a few uncorrelated components. |
+| **Standardise** before PCA | The units differ (GB, GHz, Hz, MP), so large-number variables would not dominate the components. |
 | **Linear regression** | The business question is what drives price, and log price is a numeric outcome. |
-| **Variables left out** | Rating is almost a copy of the specifications. Fast charging is missing for most iPhone, which would remove most Apple phones. |
+| **Variables left out** | Rating is largely explained by specifications. Fast charging is missing for most iPhone. |
 
 ::: notes
 Normalise comes before the dummy step so that the 0/1 dummy variables are not rescaled.
 :::
 
-## Preprocessing steps {.smaller}
+## Preprocessing recipe
 
-| Step | What it does | Why |
-|------------------------|------------------------|------------------------|
-| 1\. Standardise | Puts all numeric predictors on the same scale | Fair weighting in PCA |
-| 2\. PCA | Combines the six specifications into components, keeping enough to explain at least 70% of the variance | Removes overlap, keeps the key information |
-| 3\. Dummy variables | Turns 5G, NFC and brand group into 0/1 columns | Regression needs numbers |
-| 4\. Remove constants | Drops any column with a single value | Avoids useless predictors |
+```{r}
+#| label: recipe-show
+#| echo: true
+#| eval: false
+#| code-line-numbers: "|2|3|4|5"
+phone_rec <- recipe(log_price ~ ., data = phone_training) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_pca(all_of(pca_vars), threshold = 0.7, id = "pca") |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors())
+```
 
-:::: fragment
-::: {.callout-tip title="So what"}
-The recipe is learned from the training data only and then applied to the testing data.
+::: expl
+**Line 2:** standardise all numeric predictors (fair weighting in PCA).
 :::
-::::
+
+::: expl
+**Line 3:** combine the six specifications into components that explain at least 70% of the variance.
+:::
+
+::: expl
+**Line 4:** turn 5G, NFC and brand into 0/1 dummy variables, after standardising so they stay 0/1.
+:::
+
+::: expl
+**Line 5:** drop any column with a single value.
+:::
+
+```{=html}
+<style>
+  .expl-js .expl { display: none; margin: .3em 0; }
+  .expl-js .expl.on { display: block; }
+</style>
+<script>
+  window.addEventListener('load', function () {
+    function syncExpl() {
+      const s = Reveal.getCurrentSlide();
+      if (!s) return;
+      const n = s.querySelectorAll('pre .fragment.visible').length;
+      s.querySelectorAll('.expl').forEach((el, i) =>
+        el.classList.toggle('on', i === n - 1));
+    }
+    document.documentElement.classList.add('expl-js');
+    Reveal.on('fragmentshown', syncExpl);
+    Reveal.on('fragmenthidden', syncExpl);
+    Reveal.on('slidechanged', syncExpl);
+    syncExpl();
+  });
+</script>
+```
 
 ## Variance explained {.smaller}
 
@@ -311,13 +344,9 @@ Percent variance is the share of the total information that each component holds
 ::::: incremental
 @tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications.
 
-The first `r n_pc` components together explain `r round(cum_var, 1)`%.
-
 ::: {.callout-tip title="Decision"}
-`r n_pc` components are retained. This meets the 70% threshold while keeping the components easy to interpret. The remaining components add little extra information.
+The first `r n_pc` principal components are retained. They explain `r round(cum_var, 1)`% of the variance, meeting the 70% threshold, and are easy to interpret. The remaining components add little extra information.
 :::
-
-. . .
 
 ::: {.callout-tip title="So what"}
 Each phone can now be described by `r n_pc` PC instead of six specifications, with little loss of information.
