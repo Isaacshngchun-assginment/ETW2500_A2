@@ -121,7 +121,7 @@ mean_r <- mean(cor_long$r)
 #| label: fig-corr
 #| fig-cap: "Correlations among the six specifications used in the PCA."
 #| fig-width: 8
-#| fig-height: 7
+#| fig-height: 6
 pca_data |>
   rename_with(~ unname(nice_names[.x])) |>
   ggpairs(upper = list(continuous = wrap("cor", size = 6)),
@@ -136,7 +136,7 @@ pca_data |>
 
 - **Strongest pair:** `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`); **weakest:** `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
 
-- The specifications **overlap** so **PCA** can combine them into **fewer** uncorrelated components.
+- The specifications **overlap**, so **PCA** can combine them into **fewer** uncorrelated components.
 :::
 
 :::: fragment
@@ -148,7 +148,7 @@ Phones can be compared on a few overall specification levels instead of six sepa
 ::::::::
 
 ::: notes
-The heatmap is the evidence that PCA suits the data. If the variables were unrelated, PCA would not be able to summarise them.
+The scatter plot matrix is the evidence that PCA suits the data. If the variables were unrelated, PCA would not be able to summarise them.
 :::
 
 ## Data preparation {.smaller}
@@ -165,6 +165,7 @@ n_miss  <- n_raw - 2 - n_clean
 ```{r}
 #| label: tbl-prep
 #| tbl-cap: "Smartphones at each preparation step."
+#| tbl-cap-location: bottom
 tibble(
   step = c(
     "Original dataset",
@@ -215,10 +216,10 @@ Price was logged because it is strongly right-skewed. Luxury editions were remov
 
 | Choice | Reason |
 |------------------------------------|------------------------------------|
-| **PCA** on six specifications | The specifications overlap (@fig-corr), so using them directly would cause multicollinearity. PCA replaces them with a few uncorrelated components. |
-| **Standardise** before PCA | The units differ (GB, GHz, Hz, MP); standardising stops large-number variables from dominating the components. |
-| **Linear regression** | The business question is what drives price, and log price is a numeric outcome. |
-| **Variables left out** | Rating is largely explained by specifications. Fast charging is missing for most iPhones. |
+| **PCA** on six specifications | Specifications overlap (@fig-corr); a few uncorrelated components avoid multicollinearity. |
+| **Standardise** before PCA | Units differ (GB, GHz, Hz, MP); stops large-number from dominating. |
+| **Linear regression** | Log price is numeric; the question is what drives price. |
+| **Variables left out** | Rating: largely explained by the specifications. Fast charging: missing for most iPhones. |
 
 ::: notes
 Normalise comes before the dummy step so that the 0/1 dummy variables are not rescaled.
@@ -232,7 +233,7 @@ Normalise comes before the dummy step so that the 0/1 dummy variables are not re
 :::
 
 ::: {.fragment .fade-in-then-semi-out}
-2.  **Combine** six specification into **principal components** that explain at least 70% of the variance
+2.  **Combine** the six specification into **principal components** that explain at least 70% of the variance.
     - Removes overlap and keeps key information.
 :::
 
@@ -254,16 +255,21 @@ var_tbl <- tidy(phone_prep, id = "pca", type = "variance")
 
 # number of components kept = number of PC columns after bake()
 n_pc <- bake(phone_prep, new_data = NULL) |>
-select(starts_with("PC")) |>
-ncol()
+  select(starts_with("PC")) |>
+  ncol()
 
 pc1_var <- var_tbl |>
-filter(terms == "percent variance", component == 1) |>
-pull(value)
+  filter(terms == "percent variance", component == 1) |>
+  pull(value)
 
 cum_var <- var_tbl |>
-filter(terms == "cumulative percent variance", component == n_pc) |>
-pull(value)
+  filter(terms == "cumulative percent variance", component == n_pc) |>
+  pull(value)
+
+# variance of the first component that is not kept
+next_var <- var_tbl |>
+  filter(terms == "percent variance", component == n_pc + 1) |>
+  pull(value)
 
 var_wide <- var_tbl |>
   filter(terms %in% c("percent variance", "cumulative percent variance")) |>
@@ -277,6 +283,7 @@ var_wide <- var_tbl |>
 ```{r}
 #| label: tbl-var
 #| tbl-cap: "Variance explained by each principal component."
+#| tbl-cap-location: bottom
 var_wide |>
   gt() |>
   cols_label(component = "Component",
@@ -296,7 +303,8 @@ var_wide |>
 ```{r}
 #| label: fig-scree
 #| fig-cap: "Percentage of variance explained by each component."
-#| fig-height: 7
+#| fig-width: 6
+#| fig-height: 6
 ggplot(var_wide, aes(component, `percent variance`)) +
   geom_col(fill = "#2C7FB8") +
   geom_text(aes(label = round(`percent variance`, 1)), vjust = -0.4) +
@@ -310,26 +318,20 @@ ggplot(var_wide, aes(component, `percent variance`)) +
 Percent variance is the share of the total information that each component holds. PC1 always holds the most.
 :::
 
-## Number of components retained {.smaller}
+## Number of component retained {.smaller}
 
-::: fragment
-- @tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications.
+::: incremental
+- **PC1** explains **`r round(pc1_var, 1)`%** of the variance in the six specifications (@tbl-var, @fig-scree).
+
+- The first **`r n_pc` PCs** together explain **`r round(cum_var, 1)`%** meeting the **70% threshold**.
+
+- Each remaining component adds only **`r round(next_var, 1)`% or less**.
 :::
 
-:::: fragment
-::: {.callout-tip title="Decision"}
-The first `r n_pc` principal components are retained. They explain `r round(cum_var, 1)`% of the variance, meeting the 70% threshold, and are easy to interpret. The remaining components add little extra information.
-:::
-::::
+. . .
 
-:::: fragment
 ::: {.callout-tip title="So what"}
-Each phone can now be described by `r n_pc` PCs instead of six specifications, with little loss of information.
-:::
-::::
-
-::: fragment
-- The next step is to examine the loadings to describe what each retained component represents.
+**`r n_pc` PCs are kept:** each phone is described by `r n_pc` components instead of six specifications, with little loss of information.
 :::
 
 ::: notes
