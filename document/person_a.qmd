@@ -28,13 +28,6 @@ editor: visual
 
 <!-- Replace the other three presenter placeholders before submission. -->
 
-```{=html}
-<!-- Presentation syntax follows practise/rdoc/practise.qmd and presentation.qmd.
-     Section dividers, footer and table styling follow person_d.qmd.
-     The .smaller slide class reduces text size. self-contained bundles HTML resources.
-     R analysis follows the PCA tutorial and descriptive-analysis notes. -->
-```
-
 ::: notes
 **How to read the preparation code**
 
@@ -230,6 +223,7 @@ missing_tbl <- left_join(missing_before, missing_after, by = "variable")
 **Which combinations of smartphone specifications are associated with higher prices?**
 
 - **`r nrow(phones)` smartphone records**, `r ncol(phones)` original variables.
+- **Market context:** Smartphone listings from the Indian market, with prices retained in **Indian rupees (INR)**.
 - Specifications, connectivity, brands, recorded ratings and prices support a business study of **pricing and competitive positioning**.
 - PCA summarises related specifications. Linear regression relates the components and five additional predictors to log price.
 
@@ -253,20 +247,20 @@ Inputs are standardised because their units differ. Charging power is zero when 
 
 ## Outcome and extra predictors {.smaller}
 
-| Variable           | Type        | Meaning / role                 |
-|--------------------|-------------|--------------------------------|
-| `price`            | Numeric     | Recorded price (source units)  |
-| `log_price`        | Numeric     | Natural log of price (outcome) |
-| `rating`           | Numeric     | Recorded product rating        |
-| `battery_capacity` | Numeric     | Battery capacity (mAh)         |
-| `has_5g`           | Categorical | 5G available: FALSE / TRUE     |
-| `has_nfc`          | Categorical | NFC available: FALSE / TRUE    |
-| `brand_group`      | Categorical | Top five brands plus Other     |
+| Variable           | Type        | Meaning / role                        |
+|--------------------|-------------|---------------------------------------|
+| `price`            | Numeric     | Listed price (INR)                    |
+| `log_price`        | Numeric     | Natural log of price in INR (outcome) |
+| `rating`           | Numeric     | Recorded product rating               |
+| `battery_capacity` | Numeric     | Battery capacity (mAh)                |
+| `has_5g`           | Categorical | 5G available: FALSE / TRUE            |
+| `has_nfc`          | Categorical | NFC available: FALSE / TRUE           |
+| `brand_group`      | Categorical | Top five brands plus Other            |
 
 The **five extra predictors** are rating, battery capacity, 5G, NFC and brand group: two numeric and three categorical.
 
 ::: notes
-NFC means near-field communication. The source page could not establish the exact currency or rating methodology during this review. Verify these before final submission. Do not label rating as customer satisfaction or invent a currency. If rating is derived from specifications, acknowledge its overlap with the PCA inputs when interpreting the regression.
+NFC means near-field communication. The Indian-market context and INR labels follow the group's stated context. Prices are kept as recorded without currency conversion. The original source's currency definition has not been independently verified. The rating methodology remains unverified, so do not label rating as customer satisfaction. If rating is derived from specifications, acknowledge its overlap with the PCA inputs when interpreting the regression.
 :::
 
 ## Preparation variables {.smaller}
@@ -409,7 +403,7 @@ phones |>
   ggplot(aes(value)) +
   geom_histogram(bins = 30, fill = "#1f4e79", colour = "white") +
   facet_wrap(~ measure, scales = "free", ncol = 2) +
-  labs(x = "Recorded value (price in source currency units)", y = "Number of phones") +
+  labs(x = "Recorded value (price in INR, log_price on natural-log scale)", y = "Number of phones") +
   theme_bw(base_size = 15)
 ```
 
@@ -529,5 +523,5 @@ pc_scores |>
 - Wickham, H., et al. (2019). [*Welcome to the tidyverse*](https://doi.org/10.21105/joss.01686). Journal of Open Source Software, 4(43), 1686.
 
 ::: notes
-The dataset publication year was not verified, so the citation uses n.d. instead of asserting 2023. Confirm the source's currency, rating definition and publication date before final submission. Class materials guide the analysis code. The assignment brief determines which analyses are required.
+The dataset publication year was not verified, so the citation uses n.d. instead of asserting 2023. Confirm the original source's INR definition, rating definition and publication date before final submission. Class materials guide the analysis code. The assignment brief determines which analyses are required.
 :::
