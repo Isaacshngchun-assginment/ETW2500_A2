@@ -1,10 +1,10 @@
 ---
 title: "Smartphone Specifications and Pricing"
-subtitle: "ETW2500 Assignment 2 - PCA"
-author: "Ahmad Sufi, Person B, Person C, Person D"
+subtitle: "ETW2500 Assignment 2 - Person A"
 format:
   revealjs:
     theme: default
+    slide-number: true
     incremental: false
     pdf-separate-fragments: false
     preview-links: true
@@ -20,175 +20,152 @@ execute:
 editor: visual
 ---
 
+## Presenters
+
+- Ahmad Sufi
+- [Person B full name]
+- [Person C full name]
+- Hew Kai Feng
+
+::: notes
+Replace the two placeholders with the actual full names before submission. The final group list must put the actual leader first. Ahmad Sufi is listed without a leader label as requested.
+:::
+
 # Introduction {background-color="#1f4e79"}
 
 ## Dataset and business question {.smaller}
 
-<!-- Presenters: Ahmad Sufi, Person B, Person C, Person D -->
-
-<!-- Replace the other three presenter placeholders before submission. -->
-
-::: notes
-**How to read the preparation code**
-
-Follow steps 1 to 10 in order. Each short explanation introduces the next code chunk. These preparation chunks run during rendering, but include=FALSE hides their code and output from the audience slides. Detailed Q&A study notes are in person_a_notes.txt.
-:::
+<!-- START STANDALONE SETUP: omit the next five chunks and their step notes
+     when merging. Run Person B's preparation chunks once before A's content.
+     Keep the a-* summary chunks below. See person_a_notes.txt for merge steps. -->
 
 ::: notes
-**Step 1: Load packages and set the seed**
+**Step 1: Load packages**
 
-Load the packages used for data preparation, PCA, graphs and tables. Set the seed so the random data split can be reproduced.
+Keep these five setup chunks in person_a.qmd so it can render by itself. They match Person B's preparation. Later, the person combining the group slides should keep main.qmd's YAML and B's shared setup, and copy A's content without this marked block. Nothing needs to be deleted from this separate Person A file now. The remaining A objects have an a_ prefix to avoid overwriting teammates' objects.
 :::
 
-```{r setup, include=FALSE}
+```{r a-standalone-packages, include=FALSE}
 library(pacman)
 p_load(tidyverse, tidymodels, here, gt)
 tidymodels_prefer()
-
-# Ahmad Sufi confirmed as leader. Last five student-ID digits confirmed in chat.
-set.seed(41352)
 ```
 
 ::: notes
 **Step 2: Import and inspect the data**
 
-Read the smartphone CSV from the project data folder. Use glimpse() to check the columns, their types and example values.
+Read the CSV from the shared project data folder. glimpse() checks column types and example values.
 :::
 
-```{r load-data, include=FALSE}
+```{r a-standalone-load, include=FALSE}
 phones <- here("data/smartphone_cleaned_v5.csv") |>
   read_csv(show_col_types = FALSE)
 glimpse(phones)
 ```
 
 ::: notes
-**Step 3: Prepare the analysis variables**
+**Step 3: Match the group's analysis variables**
 
-Recode unavailable fast charging, create log price and brand groups, and convert connectivity variables to factors. Keep the selected variables and remove incomplete records.
+Use B's six specification names. Remove the same two luxury editions, create log price, code connectivity as No/Yes, and group the top seven brands with Xiaomi as the reference. Retain the outcome and eleven predictors, then remove incomplete rows. Fast charging and rating are excluded from this analysis.
 :::
 
-```{r clean-data, include=FALSE}
-# Match Person B's existing preparation so Person A can render independently.
-# At the final group merge, run this preparation only once.
-# Only unavailable fast charging is recoded to zero. Unknown values stay NA.
-phones_recoded <- phones |>
-  mutate(
-    fast_charging = if_else(fast_charging_available == 0, 0, fast_charging),
-    log_price = log(price),
-    brand_group = fct_lump_n(brand_name, n = 5),
-    has_5g = factor(has_5g),
-    has_nfc = factor(has_nfc)
-  )
+```{r a-standalone-clean, include=FALSE}
+pca_vars <- c("processor_speed", "ram_capacity", "internal_memory",
+              "refresh_rate", "primary_camera_rear", "primary_camera_front")
 
-phones_clean <- phones_recoded |>
-  select(
-    log_price, processor_speed, ram_capacity, internal_memory,
-    refresh_rate, fast_charging, primary_camera_rear,
-    primary_camera_front, rating, battery_capacity,
-    has_5g, has_nfc, brand_group
+phones_clean <- phones |>
+  filter(!model %in% c("Vertu Signature Touch",
+                       "Xiaomi Redmi K20 Pro Signature Edition")) |>
+  mutate(
+    log_price = log(price),
+    has_5g = factor(if_else(as.logical(has_5g), "Yes", "No"),
+                    levels = c("No", "Yes")),
+    has_nfc = factor(if_else(as.logical(has_nfc), "Yes", "No"),
+                     levels = c("No", "Yes")),
+    brand_group = fct_relevel(fct_lump_n(brand_name, n = 7), "xiaomi")
   ) |>
+  select(log_price, all_of(pca_vars), battery_capacity, screen_size, has_5g,
+         has_nfc, brand_group) |>
   na.omit()
 ```
 
 ::: notes
-**Step 4: Create the training and test samples**
+**Step 4: Reproduce the group's training sample**
 
-Follow the tutorial by assigning 75% of the complete records to training. The PCA and component comparisons use this training sample.
+Use B and D's seed immediately before the split. strata = log_price keeps the price distribution broadly balanced between the training and test samples. Scenario 6 does not require evaluating prediction performance.
 :::
 
-```{r split-data, include=FALSE}
-# Keep the tutorial's split. Scenario 6 does not require prediction assessment.
-phone_split <- initial_split(phones_clean, prop = 0.75)
+```{r a-standalone-split, include=FALSE}
+set.seed(41352)
+phone_split <- initial_split(phones_clean, prop = 0.75, strata = log_price)
 phone_training <- training(phone_split)
 phone_test <- testing(phone_split)
 ```
 
 ::: notes
-**Step 5: Prepare the PCA recipe**
+**Step 5: Prepare the same PCA recipe as B**
 
-Standardise the seven specification inputs, retain enough PCs to explain at least 70% of their variation, and prepare the other predictors. prep() estimates these steps from the training data.
+Standardise all numeric predictors. Apply PCA only to the six specifications, keeping enough components to explain at least 70% of their variation. Convert categorical predictors to dummy variables and remove constant predictors. prep() learns these steps from the training sample.
 :::
 
-```{r pca-recipe, include=FALSE}
-phone_recipe <- recipe(log_price ~ ., data = phone_training) |>
-  step_normalize(
-    processor_speed, ram_capacity, internal_memory, refresh_rate,
-    fast_charging, primary_camera_rear, primary_camera_front
-  ) |>
-  step_pca(
-    processor_speed, ram_capacity, internal_memory, refresh_rate,
-    fast_charging, primary_camera_rear, primary_camera_front,
-    threshold = 0.7, id = "pca"
-  ) |>
+```{r a-standalone-pca, include=FALSE}
+phone_rec <- recipe(log_price ~ ., data = phone_training) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_pca(all_of(pca_vars), threshold = 0.7, id = "pca") |>
   step_dummy(all_nominal_predictors()) |>
   step_zv(all_predictors())
+phone_prep <- prep(phone_rec)
+```
 
-phone_prep <- prep(phone_recipe)
+<!-- END STANDALONE SETUP -->
+
+::: notes
+**Step 6: Prepare A's labels and sample counts**
+
+The following chunks stay in the combined document. They read the shared data and create only A's own objects. Count luxury removals separately from records removed for missing values. a_labels makes the tables easier to read.
+:::
+
+```{r a-counts-labels, include=FALSE}
+a_eligible <- phones |>
+  filter(!model %in% c("Vertu Signature Touch",
+                       "Xiaomi Redmi K20 Pro Signature Edition"))
+a_luxury_removed <- nrow(phones) - nrow(a_eligible)
+a_incomplete_removed <- nrow(a_eligible) - nrow(phones_clean)
+a_labels <- c(
+  price = "Price (₹)",
+  log_price = "Log price",
+  processor_speed = "Processor speed (GHz)",
+  ram_capacity = "RAM (GB)",
+  internal_memory = "Storage (GB)",
+  refresh_rate = "Refresh rate (Hz)",
+  primary_camera_rear = "Rear camera (MP)",
+  primary_camera_front = "Front camera (MP)",
+  battery_capacity = "Battery capacity (mAh)",
+  screen_size = "Screen size (inches)",
+  has_5g = "5G", has_nfc = "NFC", brand_name = "Brand"
+)
 ```
 
 ::: notes
-**Step 6: Extract PC scores and PCA results**
+**Step 7: Calculate the correlation used in the justification**
 
-Apply the prepared recipe with bake(). Attach the original group labels in the same row order, then extract the component count, explained variance and loadings.
+Use the six PCA variables and the same complete records as B. Keep pca_vars as a character vector of names, rather than replacing it with a data frame. B's section provides the correlation plot.
 :::
 
-```{r pca-scores, include=FALSE}
-# bake() removes the original factor columns after dummy coding.
-# Attach labels from exactly the same rows, in exactly the same order.
-pc_scores <- phone_training |>
-  select(has_5g, brand_group) |>
-  bind_cols(
-    bake(phone_prep, new_data = phone_training) |>
-      select(starts_with("PC"))
-  )
-pc_names <- names(pc_scores |> select(starts_with("PC")))
-num_pcs <- length(pc_names)
-var_tbl <- tidy(phone_prep, id = "pca", type = "variance")
-loading_tbl <- tidy(phone_prep, id = "pca", type = "coef")
-retained_variance <- var_tbl |>
-  filter(terms == "cumulative percent variance", component == num_pcs) |>
-  pull(value)
+```{r a-correlation, include=FALSE}
+a_pca_data <- phones_clean |>
+  select(all_of(pca_vars))
+a_cor <- cor(a_pca_data)
 ```
 
 ::: notes
-**Step 7: Calculate specification correlations**
+**Step 8: Prepare descriptive summaries**
 
-Select the seven PCA inputs from the complete records and calculate their correlations. These results support the dataset justification and the correlation heatmap.
+Calculate the mean, standard deviation, median, minimum and maximum for each numeric analysis variable. pivot_longer() gives one row per variable. The summaries describe all complete records before splitting, while PCA is fitted on the training sample.
 :::
 
-```{r correlations, include=FALSE}
-pca_vars <- phones_clean |>
-  select(
-    processor_speed, ram_capacity, internal_memory, refresh_rate,
-    fast_charging, primary_camera_rear, primary_camera_front
-  )
-correlation_matrix <- cor(pca_vars)
-```
-
-::: notes
-**Step 8: Compare component means across groups**
-
-Group the training phones by 5G availability and by brand. Calculate each group size and the mean of every retained component.
-:::
-
-```{r pc-group-means, include=FALSE}
-pc_by_5g <- pc_scores |>
-  group_by(has_5g) |>
-  summarise(n = n(), across(starts_with("PC"), mean), .groups = "drop")
-pc_by_brand <- pc_scores |>
-  group_by(brand_group) |>
-  summarise(n = n(), across(starts_with("PC"), mean), .groups = "drop")
-```
-
-::: notes
-**Step 9: Prepare numeric descriptive summaries**
-
-Calculate the mean, standard deviation, median, minimum and maximum for the numeric analysis variables. Reshape the results into one row per variable for the summary tables.
-:::
-
-```{r numeric-summaries, include=FALSE}
-# Descriptive summaries refer to the 784 complete records, before splitting.
-numeric_summary <- phones_clean |>
+```{r a-numeric-summaries, include=FALSE}
+a_numeric_summary <- phones_clean |>
   summarise(across(
     where(is.numeric),
     list(mean = mean, sd = sd, median = median, min = min, max = max),
@@ -198,93 +175,75 @@ numeric_summary <- phones_clean |>
 ```
 
 ::: notes
-**Step 10: Count missing values before and after recoding**
+**Step 9: Count missing values in the used source variables**
 
-Count missing entries in each used source variable, then repeat the count after the charging recode. Join the two tables by variable name for a direct comparison.
+Count missing values after removing the two luxury editions and before dropping incomplete rows. Use price and brand_name here because they generate log_price and brand_group. Missing fields can occur in the same record, so their counts do not equal the number of removed phones.
 :::
 
-```{r missing-counts, include=FALSE}
-# Include categorical and helper variables used in cleaning, even with zero NAs.
-missing_vars <- c(
-  "price", "processor_speed", "ram_capacity", "internal_memory",
-  "refresh_rate", "fast_charging", "primary_camera_rear",
-  "primary_camera_front", "rating", "battery_capacity",
-  "has_5g", "has_nfc", "brand_name", "fast_charging_available"
-)
-missing_before <- phones |>
-  summarise(across(all_of(missing_vars), ~ sum(is.na(.x)))) |>
-  pivot_longer(everything(), names_to = "variable", values_to = "before")
-missing_after <- phones_recoded |>
-  summarise(across(all_of(missing_vars), ~ sum(is.na(.x)))) |>
-  pivot_longer(everything(), names_to = "variable", values_to = "after_recode")
-missing_tbl <- left_join(missing_before, missing_after, by = "variable")
+```{r a-missing-counts, include=FALSE}
+a_source_vars <- c("price", pca_vars, "battery_capacity", "screen_size",
+                   "has_5g", "has_nfc", "brand_name")
+a_missing <- a_eligible |>
+  summarise(across(all_of(a_source_vars), ~ sum(is.na(.x)))) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "missing")
 ```
 
-**Which combinations of smartphone specifications are associated with higher prices?**
+**What drives smartphone prices in the Indian market: overall specifications, specification trade-offs or brand?**
 
-- **`r nrow(phones)` smartphone records**, `r ncol(phones)` original variables.
-- **Market context:** Smartphone listings from the Indian market, with prices retained in **Indian rupees (INR)**.
-- Specifications, connectivity, brands, recorded ratings and prices support a business study of **pricing and competitive positioning**.
-- PCA summarises related specifications. Linear regression relates the components and five additional predictors to log price.
+- **`r nrow(phones)` smartphone models/variants**, `r ncol(phones)` original variables.
+- **Indian market**, with prices retained in **Indian rupees (₹)**.
+- **Business context:** pricing and competitive positioning.
+- **Kaggle dataset**, with the full citation on the References slide near the end.
 
 ::: notes
-One record is a listed smartphone model/variant, not a buyer. This is an observational dataset: describe associations, not causal effects. The CSV is a snapshot. Do not present its prices as current market prices. Collection date and sampling method have not been established.
+One record is a listed smartphone model or variant, not a buyer. These are observational data, so "drives" means statistical associations in this presentation. Market context and ₹ follow the group's stated context. The original source's currency definition has not been independently verified. Prices describe the dataset snapshot, not current market prices. Collection date and sampling method have not been established.
 :::
 
 ## PCA input variables {.smaller}
 
-| Variable               | Type    | Meaning / unit                    |
-|------------------------|---------|-----------------------------------|
-| `processor_speed`      | Numeric | Processor speed (GHz)             |
-| `ram_capacity`         | Numeric | RAM (GB)                          |
-| `internal_memory`      | Numeric | Internal storage (GB)             |
-| `refresh_rate`         | Numeric | Display refresh rate (Hz)         |
-| `fast_charging`        | Numeric | Fast-charging power (W)           |
-| `primary_camera_rear`  | Numeric | Main rear-camera resolution (MP)  |
+| Variable | Type | Meaning / unit |
+|---|---|---|
+| `processor_speed` | Numeric | Processor speed (GHz) |
+| `ram_capacity` | Numeric | RAM (GB) |
+| `internal_memory` | Numeric | Internal storage (GB) |
+| `refresh_rate` | Numeric | Display refresh rate (Hz) |
+| `primary_camera_rear` | Numeric | Main rear-camera resolution (MP) |
 | `primary_camera_front` | Numeric | Main front-camera resolution (MP) |
 
-Inputs are standardised because their units differ. Charging power is zero when unavailable. Megapixels measure resolution, not overall image quality.
+- **Six inputs**, standardised because their units differ.
+- Megapixels measure **resolution**, not overall image quality.
 
 ## Outcome and extra predictors {.smaller}
 
-| Variable           | Type        | Meaning / role                        |
-|--------------------|-------------|---------------------------------------|
-| `price`            | Numeric     | Listed price (INR)                    |
-| `log_price`        | Numeric     | Natural log of price in INR (outcome) |
-| `rating`           | Numeric     | Recorded product rating               |
-| `battery_capacity` | Numeric     | Battery capacity (mAh)                |
-| `has_5g`           | Categorical | 5G available: FALSE / TRUE            |
-| `has_nfc`          | Categorical | NFC available: FALSE / TRUE           |
-| `brand_group`      | Categorical | Top five brands plus Other            |
+| Variable | Type | Meaning / role |
+|---|---|---|
+| `price` | Numeric | Listed price (₹), used to create the outcome |
+| `log_price` | Numeric | Natural log of price in ₹, the outcome |
+| `battery_capacity` | Numeric | Battery capacity (mAh) |
+| `screen_size` | Numeric | Screen diagonal (inches) |
+| `has_5g` | Categorical | 5G available, No / Yes |
+| `has_nfc` | Categorical | NFC available, No / Yes |
+| `brand_group` | Categorical | Top seven brands plus Other, Xiaomi reference |
 
-The **five extra predictors** are rating, battery capacity, 5G, NFC and brand group: two numeric and three categorical.
-
-::: notes
-NFC means near-field communication. The Indian-market context and INR labels follow the group's stated context. Prices are kept as recorded without currency conversion. The original source's currency definition has not been independently verified. The rating methodology remains unverified, so do not label rating as customer satisfaction. If rating is derived from specifications, acknowledge its overlap with the PCA inputs when interpreting the regression.
-:::
-
-## Preparation variables {.smaller}
-
-| Variable                  | Type              | Meaning / use                 |
-|---------------------------|-------------------|-------------------------------|
-| `brand_name`              | Categorical       | Original manufacturer         |
-| `fast_charging_available` | Categorical (0/1) | Fast charging available (0/1) |
-| `PC1` to `PC`*k*          | Numeric           | Weighted standardised specs   |
-
-**Brand groups:** Oppo, Realme, Samsung, Vivo, Xiaomi and Other, selected by frequency in the original dataset. Other combines all remaining brands.
-
-Price is excluded from PCA. The five additional predictors are also excluded from component construction.
+- **Five extra predictors:** two numeric and three categorical.
+- Price and these extra predictors are **excluded from PCA construction**.
 
 ::: notes
-brand_name is used to derive brand_group. fast_charging_available distinguishes unavailable charging from unknown charging power. Each PC is a weighted combination of the seven standardised inputs. The number of PCs, k, follows the 70% cumulative-variance rule.
+The five extra predictors are battery capacity, screen size, 5G, NFC and brand group. B standardises battery and screen size for regression, but they do not enter step_pca(). NFC means near-field communication. log_price is the natural log of the numerical ₹ price, not itself a rupee amount. No currency conversion is performed.
+
+Two source variables are used in preparation only. model is a text identifier used to remove the two specified luxury editions. brand_name is the original categorical manufacturer used to create brand_group. The named brands are Apple, Motorola, Oppo, Realme, Samsung, Vivo and Xiaomi. Other pools the remaining manufacturers. Xiaomi, no 5G and no NFC are the reference categories for D's regression. Each retained PC is a weighted combination of the six standardised specifications.
 :::
 
 ## Why this dataset suits PCA {.smaller}
 
-- **Business relevance:** manufacturers and retailers need to understand specification bundles and product positioning.
-- **Correlated inputs:** RAM and storage correlate at **`r round(correlation_matrix["ram_capacity", "internal_memory"], 2)`** in the complete records, suggesting shared information.
-- **Suitable structure:** seven numeric PCA inputs, a numeric outcome, and both numeric and categorical additional predictors.
-- **Usable sample:** `r nrow(phones_clean)` complete records remain. The PCA uses `r nrow(phone_training)` training records.
+- **Business relevance:** compare specification bundles and product positioning.
+- **Shared information:** RAM and storage correlate at **`r round(a_cor["ram_capacity", "internal_memory"], 2)`** in the complete records.
+- **Suitable structure:** six numeric PCA inputs, a numeric outcome, and numeric and categorical extra predictors.
+- **Usable sample:** **`r nrow(phones_clean)` complete records**, with **`r nrow(phone_training)`** used to fit PCA.
+
+::: notes
+The correlation is computed on exactly the same complete records as B's correlation plot. A strong correlation indicates shared information, not a causal effect. B's section shows the detailed correlation evidence and explains how many components are kept.
+:::
 
 ## Objectives and significance {.smaller}
 
@@ -292,16 +251,16 @@ brand_name is used to derive brand_group. fast_charging_available distinguishes 
 ::: {.column width="50%"}
 **Objectives**
 
-1.  Summarise related smartphone specifications into components and interpret their specification profiles.
-2.  Examine how the components and five additional predictors are associated with smartphone price.
+1. Summarise related smartphone specifications into components and interpret their profiles.
+2. Examine how the components and five additional predictors are associated with smartphone price.
 :::
 
 ::: {.column width="50%"}
 **Who benefits?**
 
 - **Manufacturers:** compare specification bundles when positioning products.
-- **Retailers:** compare models when planning price ranges and product assortments.
-- **Buyers and analysts:** understand complex specifications through fewer dimensions.
+- **Retailers:** plan price ranges and product assortments.
+- **Buyers and analysts:** understand specifications through fewer dimensions.
 :::
 :::::
 
@@ -310,13 +269,14 @@ brand_name is used to derive brand_group. fast_charging_available distinguishes 
 ## Missing values and cleaning {.smaller}
 
 ```{r}
-#| label: tbl-missing
-#| tbl-cap: "Missing values before and after recoding"
+#| label: tbl-a-missing
+#| tbl-cap: "Missing values after removing the two luxury editions"
 #| tbl-cap-location: bottom
-missing_tbl |>
-  filter(before > 0) |>
+a_missing |>
+  filter(missing > 0) |>
+  mutate(variable = unname(a_labels[variable])) |>
   gt() |>
-  cols_label(variable = "Variable", before = "Original NAs", after_recode = "After recoding") |>
+  cols_label(variable = "Variable", missing = "Missing values") |>
   opt_table_outline() |>
   tab_options(table.font.size = px(18),
               column_labels.font.weight = "bold",
@@ -324,25 +284,27 @@ missing_tbl |>
               table_body.vlines.style = "solid")
 ```
 
-All other used source variables have zero missing values. Of 211 missing fast-charging values, **143 mean unavailable** and become zero, while **68 remain unknown**.
-
-Removing records incomplete on the selected analysis variables leaves **`r nrow(phones_clean)` of `r nrow(phones)` phones** (`r round(100 * (1 - nrow(phones_clean) / nrow(phones)), 1)`% excluded).
+- **`r sum(a_missing$missing > 0)` used variables** have missing values, with processor speed having the most.
+- **`r a_luxury_removed` luxury editions** excluded to match the group's product scope.
+- **`r a_incomplete_removed` incomplete records** removed, leaving **`r nrow(phones_clean)` phones**.
 
 ::: notes
-The full missing-value table, including zero counts, is available as missing_tbl in the setup. Do not add missing counts to calculate dropped rows because a record can be missing more than one field. Remaining unknown fast-charging values are not recoded to zero. Excluding incomplete records can change the sample composition. Findings describe the retained records.
+The group excludes Vertu Signature Touch and Xiaomi Redmi K20 Pro Signature Edition to focus on mainstream specification-based pricing. These are scope exclusions, not automatic removal of every expensive phone. There are 978 eligible records before complete-case filtering. Missing counts are 42 for processor speed, 11 for battery capacity and 5 for front-camera resolution. One record has more than one missing field, so 58 missing fields correspond to 57 removed records. B's section gives the full preparation flow. No missing values are imputed. Complete-case exclusion may affect sample composition.
 :::
 
 ## Descriptive summary: PCA inputs {.smaller}
 
 ```{r}
-#| label: tbl-spec-summary
-#| tbl-cap: "Summary of the seven PCA inputs"
+#| label: tbl-a-spec-summary
+#| tbl-cap: "Summary of the six PCA inputs in the complete sample"
 #| tbl-cap-location: bottom
-numeric_summary |>
-  filter(variable %in% names(pca_vars)) |>
+a_numeric_summary |>
+  filter(variable %in% pca_vars) |>
+  mutate(variable = unname(a_labels[variable])) |>
   gt() |>
   fmt_number(columns = where(is.numeric), decimals = 2) |>
-  cols_label(variable = "Specification", mean = "Mean", sd = "SD", median = "Median", min = "Min", max = "Max") |>
+  cols_label(variable = "Specification", mean = "Mean", sd = "SD",
+             median = "Median", min = "Min", max = "Max") |>
   opt_table_outline() |>
   tab_options(table.font.size = px(18),
               column_labels.font.weight = "bold",
@@ -350,19 +312,22 @@ numeric_summary |>
               table_body.vlines.style = "solid")
 ```
 
-Summary of **`r nrow(phones_clean)` complete records**, before splitting. Different units and ranges support standardising the inputs before PCA.
+- Summaries use **`r nrow(phones_clean)` complete records**, before splitting.
+- Different units and ranges support **standardising before PCA**.
 
-## Descriptive summary: outcome and other predictors {.smaller}
+## Outcome and feature summary {.smaller}
 
 ```{r}
-#| label: tbl-other-summary
-#| tbl-cap: "Summary of log price, rating and battery capacity"
+#| label: tbl-a-other-summary
+#| tbl-cap: "Log price and the two extra numeric predictors"
 #| tbl-cap-location: bottom
-numeric_summary |>
-  filter(variable %in% c("log_price", "rating", "battery_capacity")) |>
+a_numeric_summary |>
+  filter(variable %in% c("log_price", "battery_capacity", "screen_size")) |>
+  mutate(variable = unname(a_labels[variable])) |>
   gt() |>
   fmt_number(columns = where(is.numeric), decimals = 2) |>
-  cols_label(variable = "Variable", mean = "Mean", sd = "SD", median = "Median", min = "Min", max = "Max") |>
+  cols_label(variable = "Variable", mean = "Mean", sd = "SD",
+             median = "Median", min = "Min", max = "Max") |>
   opt_table_outline() |>
   tab_options(table.font.size = px(18),
               column_labels.font.weight = "bold",
@@ -371,8 +336,8 @@ numeric_summary |>
 ```
 
 ```{r}
-#| label: tbl-connectivity
-#| tbl-cap: "Connectivity features in the complete records"
+#| label: tbl-a-connectivity
+#| tbl-cap: "Connectivity features in the complete sample"
 #| tbl-cap-location: bottom
 phones_clean |>
   select(has_5g, has_nfc) |>
@@ -381,6 +346,7 @@ phones_clean |>
   group_by(feature) |>
   mutate(percent = 100 * n / sum(n)) |>
   ungroup() |>
+  mutate(feature = unname(a_labels[feature])) |>
   gt() |>
   fmt_number(columns = percent, decimals = 1) |>
   cols_label(feature = "Feature", available = "Available", n = "Phones", percent = "%") |>
@@ -394,127 +360,31 @@ phones_clean |>
 ## Why use log price? {.smaller}
 
 ```{r}
-#| label: fig-price
-#| fig-cap: "Price before and after the natural-log transformation"
+#| label: fig-a-price
+#| fig-cap: "Price and natural log of price for the retained phones"
 #| fig-height: 3.5
-phones |>
-  transmute(price, log_price = log(price)) |>
+phones_clean |>
+  transmute(price = exp(log_price), log_price) |>
   pivot_longer(everything(), names_to = "measure", values_to = "value") |>
+  mutate(measure = factor(measure, levels = c("price", "log_price"),
+                          labels = c("Price (₹)", "Log price"))) |>
   ggplot(aes(value)) +
   geom_histogram(bins = 30, fill = "#1f4e79", colour = "white") +
   facet_wrap(~ measure, scales = "free", ncol = 2) +
-  labs(x = "Recorded value (price in INR, log_price on natural-log scale)", y = "Number of phones") +
+  scale_x_continuous(n.breaks = 4, labels = scales::comma) +
+  labs(x = NULL, y = "Number of phones") +
   theme_bw(base_size = 15)
 ```
 
-Across the **`r nrow(phones)` original records**, price has a long upper tail. Taking the natural log compresses this tail and lets the model describe proportional price differences.
+- **`r nrow(phones_clean)` retained phones**, matching the analysis sample.
+- Log price **compresses the upper tail** and supports interpreting proportional price differences.
 
 ::: notes
-A skewed outcome does not by itself violate linear regression assumptions. We use log price as a useful scale for price associations, not as proof that model assumptions are satisfied. Scenario 6 asks for fitting and interpretation, not predictive performance evaluation.
+exp(log_price) recovers the original numerical ₹ prices for the same complete records without changing phones_clean. The two panels have different horizontal scales. A skewed outcome alone does not violate linear regression assumptions. Taking logs is a modelling choice, not proof that assumptions are satisfied. Scenario 6 requires fitting and interpreting the model, not evaluating predictive performance.
 :::
 
-## Specification correlations {.smaller}
-
-```{r}
-#| label: fig-correlation
-#| fig-cap: "Correlations among the seven PCA inputs"
-#| fig-height: 4.3
-correlation_matrix |>
-  as.data.frame() |>
-  rownames_to_column("variable_1") |>
-  pivot_longer(-variable_1, names_to = "variable_2", values_to = "correlation") |>
-  ggplot(aes(variable_1, variable_2, fill = correlation)) +
-  geom_tile() +
-  geom_text(aes(label = round(correlation, 2)), size = 3.5) +
-  scale_fill_gradient2(low = "#B2182B", mid = "white", high = "#92C5DE", limits = c(-1, 1)) +
-  coord_equal() +
-  labs(x = NULL, y = NULL, fill = "Correlation") +
-  theme_bw(base_size = 12) +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1))
-```
-
-:::: fragment
-::: {.callout-tip title="Why it matters"}
-@fig-correlation shows that RAM and storage are strongly related (**r = `r round(correlation_matrix["ram_capacity", "internal_memory"], 2)`**). Shared variation across specifications supports summarising them with PCA.
-:::
-::::
-
-::: notes
-Correlations use all complete records. PCA loadings and the later component comparisons use only the training records. A strong correlation is evidence of shared information, not evidence that one specification causes another.
-:::
-
-# Component Comparisons {background-color="#1f4e79"}
-
-## Component scores by 5G availability {.smaller}
-
-The **`r num_pcs` retained components** explain **`r round(retained_variance, 1)`%** of standardised specification variation in `r nrow(phone_training)` training phones.
-
-```{r}
-#| label: tbl-pc-5g
-#| tbl-cap: "Mean component scores by 5G availability"
-#| tbl-cap-location: bottom
-pc_by_5g |>
-  gt() |>
-  fmt_number(columns = starts_with("PC"), decimals = 2) |>
-  cols_label(has_5g = "5G available", n = "Phones") |>
-  opt_table_outline() |>
-  tab_options(table.font.size = px(18),
-              column_labels.font.weight = "bold",
-              column_labels.vlines.style = "solid",
-              table_body.vlines.style = "solid")
-```
-
-- **PC1:** 5G phones average **`r round(pc_by_5g$PC1[pc_by_5g$has_5g == "TRUE"], 2)`**, compared with **`r round(pc_by_5g$PC1[pc_by_5g$has_5g == "FALSE"], 2)`** without 5G. All seven loadings are positive. RAM, charging power and refresh rate are strongest. This suggests a higher overall specification profile for 5G phones.
-- **PC2:** both group means are close to zero (`r round(pc_by_5g$PC2[pc_by_5g$has_5g == "TRUE"], 2)` and `r round(pc_by_5g$PC2[pc_by_5g$has_5g == "FALSE"], 2)`). There is little mean separation on this camera-resolution versus storage contrast.
-- **PC3:** the mean is higher for 5G phones (`r round(pc_by_5g$PC3[pc_by_5g$has_5g == "TRUE"], 2)` versus `r round(pc_by_5g$PC3[pc_by_5g$has_5g == "FALSE"], 2)`), a shift towards the refresh-rate side of the contrast with front-camera resolution and storage.
-
-::: notes
-These are descriptive differences, not significance tests or adjusted price effects. Interpretation is based on the current loadings: PC1 RAM +0.428, charging +0.414 and refresh +0.393. PC2 rear camera +0.752, storage -0.363 and front camera +0.330. PC3 front camera -0.649, refresh +0.438 and storage -0.333. The score is a weighted combination. A higher score need not mean that every positively loading input is higher. Coordinate component labels with Person C. Recheck this prose if the seed, input variables or cleaning changes. Keep the original training labels aligned when attaching them to baked scores.
-:::
-
-## Mean component scores by brand {.smaller}
-
-```{r}
-#| label: tbl-pc-brand
-#| tbl-cap: "Mean component scores by brand group"
-#| tbl-cap-location: bottom
-pc_by_brand |>
-  gt() |>
-  fmt_number(columns = starts_with("PC"), decimals = 2) |>
-  cols_label(brand_group = "Brand group", n = "Phones") |>
-  opt_table_outline() |>
-  tab_options(table.font.size = px(18),
-              column_labels.font.weight = "bold",
-              column_labels.vlines.style = "solid",
-              table_body.vlines.style = "solid")
-```
-
-- **PC1:** Among the five named brands, Xiaomi has the highest mean (`r round(pc_by_brand$PC1[pc_by_brand$brand_group == "xiaomi"], 2)`) and Samsung the lowest (`r round(pc_by_brand$PC1[pc_by_brand$brand_group == "samsung"], 2)`). These describe sampled specification profiles.
-- **PC2:** Xiaomi's positive mean (`r round(pc_by_brand$PC2[pc_by_brand$brand_group == "xiaomi"], 2)`) leans towards camera resolution relative to storage.
-- **PC3:** Vivo's negative mean (`r round(pc_by_brand$PC3[pc_by_brand$brand_group == "vivo"], 2)`) leans towards front-camera resolution and storage relative to refresh rate.
-
-::: notes
-All means are computed from the training records. Other has the highest PC1 mean overall but pools many manufacturers, so it is not a single competitor. Do not generalise a sample's mean to all products a brand makes. The comparisons do not adjust for price or other predictors.
-:::
-
-## Within-brand variation in PC1 {.smaller}
-
-```{r}
-#| label: fig-pc-brand
-#| fig-cap: "PC1 scores across the brand groups"
-#| fig-height: 3.8
-pc_scores |>
-  ggplot(aes(brand_group, PC1, fill = brand_group)) +
-  geom_boxplot(show.legend = FALSE) +
-  labs(x = "Brand group", y = "PC1: overall specification profile") +
-  theme_bw(base_size = 16)
-```
-
-:::: fragment
-::: {.callout-tip title="Why it matters"}
-@fig-pc-brand shows overlapping brand distributions. Individual models vary substantially within a brand. **Other pools several brands.** Component comparisons describe product profiles. Regression examines their associations with price alongside the five additional predictors.
-:::
-::::
+<!-- At the final merge, insert B, C and D's analysis slides before References.
+     Keep all group references together before the final Thank you slide. -->
 
 ## References {.smaller}
 
@@ -523,5 +393,9 @@ pc_scores |>
 - Wickham, H., et al. (2019). [*Welcome to the tidyverse*](https://doi.org/10.21105/joss.01686). Journal of Open Source Software, 4(43), 1686.
 
 ::: notes
-The dataset publication year was not verified, so the citation uses n.d. instead of asserting 2023. Confirm the original source's INR definition, rating definition and publication date before final submission. Class materials guide the analysis code. The assignment brief determines which analyses are required.
+The dataset publication year has not been verified, so the citation uses n.d. Class materials guide the code and the assignment brief determines the required analyses. References appear immediately before the final Thank you slide in this draft and the combined group deck.
 :::
+
+# Thank you {background-color="#1F4E79"}
+
+Questions?
