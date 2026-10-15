@@ -13,6 +13,7 @@ format:
     code-line-numbers: true
     background-transition: fade
     footer: "ETW2500 Unsupervised Learning | Group 29"
+    css: custom.css
 editor: visual
 execute:
   echo: false
@@ -222,58 +223,27 @@ The results describe how specifications related to price for typical smartphones
 Normalise comes before the dummy step so that the 0/1 dummy variables are not rescaled.
 :::
 
-## Preprocessing recipe
+## Preprocessing step {.smaller}
 
-```{r}
-#| label: recipe-show
-#| echo: true
-#| eval: false
-#| code-line-numbers: "|2|3|4|5"
-phone_rec <- recipe(log_price ~ ., data = phone_training) |>
-  step_normalize(all_numeric_predictors()) |>
-  step_pca(all_of(pca_vars), threshold = 0.7, id = "pca") |>
-  step_dummy(all_nominal_predictors()) |>
-  step_zv(all_predictors())
-```
-
-::: expl
-**Line 2:** standardise all numeric predictors (fair weighting in PCA).
+::: {.fragment .fade-in-then-semi-out}
+1.  **Standardise** all numeric predictors.
+    - Fair weighting in PCA.
 :::
 
-::: expl
-**Line 3:** combine the six specifications into components that explain at least 70% of the variance.
+::: {.fragment .fade-in-then-semi-out}
+2.  **Combines** six specification into **principal components** that explain 70% of the variance
+    - Removes overlap and keep key information.
 :::
 
-::: expl
-**Line 4:** turn 5G, NFC and brand into 0/1 dummy variables, after standardising so they stay 0/1.
+::: {.fragment .fade-in-then-semi-out}
+3.  Turn 5G, NFC and brand into 0/1 **dummy variables**
+    - Regression requires numbers.
 :::
 
-::: expl
-**Line 5:** drop any column with a single value.
+::: {.fragment .fade-in-then-semi-out}
+4.  **Drop** any **column** with a **single value**.
+    - Avoids useless predictors.
 :::
-
-```{=html}
-<style>
-  .expl-js .expl { display: none; margin: .3em 0; }
-  .expl-js .expl.on { display: block; }
-</style>
-<script>
-  window.addEventListener('load', function () {
-    function syncExpl() {
-      const s = Reveal.getCurrentSlide();
-      if (!s) return;
-      const n = s.querySelectorAll('pre .fragment.visible').length;
-      s.querySelectorAll('.expl').forEach((el, i) =>
-        el.classList.toggle('on', i === n - 1));
-    }
-    document.documentElement.classList.add('expl-js');
-    Reveal.on('fragmentshown', syncExpl);
-    Reveal.on('fragmenthidden', syncExpl);
-    Reveal.on('slidechanged', syncExpl);
-    syncExpl();
-  });
-</script>
-```
 
 ## Variance explained {.smaller}
 
