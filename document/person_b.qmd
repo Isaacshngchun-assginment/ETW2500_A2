@@ -13,7 +13,6 @@ format:
     code-line-numbers: true
     background-transition: fade
     footer: "ETW2500 Unsupervised Learning | Group 29"
-    css: custom.css
 editor: visual
 execute:
   echo: false
@@ -117,27 +116,27 @@ mean_r <- mean(cor_long$r)
 ## Are the specifications correlated? {.smaller}
 
 :::::::: columns
-::: {.column width="55%"}
+::: {.column width="58%"}
 ```{r}
 #| label: fig-corr
 #| fig-cap: "Correlations among the six specifications used in the PCA."
-#| fig-width: 6.5
-#| fig-height: 4.2
+#| fig-width: 8
+#| fig-height: 7
 pca_data |>
   rename_with(~ unname(nice_names[.x])) |>
-  ggpairs(upper = list(continuous = wrap("cor", size = 3.5)),
+  ggpairs(upper = list(continuous = wrap("cor", size = 6)),
           lower = list(continuous = wrap("points", size = 0.4, alpha = 0.3))) +
-  theme_bw(base_size = 9)
+  theme_bw(base_size = 12)
 ```
 :::
 
-:::::: {.column width="45%"}
+:::::: {.column width="42%"}
 ::: incremental
-- @fig-corr shows that the **correlations** among the six specifications range from `r round(low_pair$r, 2)` to `r round(top_pair$r, 2)`, with an average of `r round(mean_r, 2)`.
+- **Correlations** range from `r round(low_pair$r, 2)` to `r round(top_pair$r, 2)`, with an average of `r round(mean_r, 2)`.
 
 - **Strongest pair:** `r top_pair$v1` and `r top_pair$v2` (`r round(top_pair$r, 2)`); **weakest:** `r low_pair$v1` and `r low_pair$v2` (`r round(low_pair$r, 2)`).
 
-- Variables move together (**overlapping information**), so **PCA** can combine them into **fewer** uncorrelated components.
+- The specifications **overlap** so **PCA** can combine them into **fewer** uncorrelated components.
 :::
 
 :::: fragment
@@ -187,23 +186,25 @@ tibble(
 ```
 :::
 
-:::::: {.column width="52%"}
+:::: {.column width="52%"}
 @tbl-prep shows that `r n_clean` of the `r n_raw` smartphones are used.
 
 ::: incremental
-- Two **luxury editions** were removed because their prices reflect gold and premium materials not specifications.
+- Two **luxury editions** were removed because their prices reflect gold and premium materials, not specifications.
 
 - **Incomplete records** were removed because PCA cannot handle missing values.
 
 - **Price** was logged because it is strongly right-skewed, and **Brand** was reduced to the seven largest brands plus Other.
+
+- **5G** and **NFC** recoded to No/Yes; **Xiaomi** is the base brand.
 :::
+::::
 
 :::: fragment
 ::: {.callout-tip title="So what"}
-The results describe how specifications related to price for typical smartphones.
+The results describe how specifications relate to price for typical smartphones.
 :::
 ::::
-::::::
 ::::::::
 
 ::: notes
@@ -215,15 +216,15 @@ The results describe how specifications related to price for typical smartphones
 | Choice | Reason |
 |------------------------------------|------------------------------------|
 | **PCA** on six specifications | The specifications overlap (@fig-corr), so using them directly would cause multicollinearity. PCA replaces them with a few uncorrelated components. |
-| **Standardise** before PCA | The units differ (GB, GHz, Hz, MP), so large-number variables would not dominate the components. |
+| **Standardise** before PCA | The units differ (GB, GHz, Hz, MP); standardising stops large-number variables from dominating the components. |
 | **Linear regression** | The business question is what drives price, and log price is a numeric outcome. |
-| **Variables left out** | Rating is largely explained by specifications. Fast charging is missing for most iPhone. |
+| **Variables left out** | Rating is largely explained by specifications. Fast charging is missing for most iPhones. |
 
 ::: notes
 Normalise comes before the dummy step so that the 0/1 dummy variables are not rescaled.
 :::
 
-## Preprocessing step {.smaller}
+## Preprocessing steps {.smaller}
 
 ::: {.fragment .fade-in-then-semi-out}
 1.  **Standardise** all numeric predictors.
@@ -231,13 +232,13 @@ Normalise comes before the dummy step so that the 0/1 dummy variables are not re
 :::
 
 ::: {.fragment .fade-in-then-semi-out}
-2.  **Combines** six specification into **principal components** that explain 70% of the variance
-    - Removes overlap and keep key information.
+2.  **Combine** six specification into **principal components** that explain at least 70% of the variance
+    - Removes overlap and keeps key information.
 :::
 
 ::: {.fragment .fade-in-then-semi-out}
-3.  Turn 5G, NFC and brand into 0/1 **dummy variables**
-    - Regression requires numbers.
+3.  Turn 5G, NFC and brand into 0/1 **dummy variables.**
+    - Regression requires numbers; done after standardising so they stay 0/1.
 :::
 
 ::: {.fragment .fade-in-then-semi-out}
@@ -311,7 +312,6 @@ Percent variance is the share of the total information that each component holds
 
 ## Number of components retained {.smaller}
 
-::::: incremental
 @tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications.
 
 ::: {.callout-tip title="Decision"}
@@ -319,11 +319,10 @@ The first `r n_pc` principal components are retained. They explain `r round(cum_
 :::
 
 ::: {.callout-tip title="So what"}
-Each phone can now be described by `r n_pc` PC instead of six specifications, with little loss of information.
+Each phone can now be described by `r n_pc` PCs instead of six specifications, with little loss of information.
 :::
 
 The next step is to examine the loadings to describe what each retained component represents.
-:::::
 
 ::: notes
 The 70% threshold is set in step_pca(). R keeps the smallest number of components whose cumulative variance reaches 70%.
