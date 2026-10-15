@@ -161,10 +161,10 @@ n_miss  <- n_raw - 2 - n_clean
 ```
 
 :::::::: columns
-::: {.column width="48%"}
+::: {.column width="40%"}
 ```{r}
 #| label: tbl-prep
-#| tbl-cap: "Number of smartphones at each preparation step."
+#| tbl-cap: "Smartphones at each preparation step."
 tibble(
   step = c(
     "Original dataset",
@@ -186,17 +186,17 @@ tibble(
 ```
 :::
 
-:::: {.column width="52%"}
-@tbl-prep shows that `r n_clean` of the `r n_raw` smartphones are used.
-
+:::: {.column width="60%"}
 ::: incremental
-- Two **luxury editions** were removed because their prices reflect gold and premium materials, not specifications.
+- **`r n_clean` of `r n_raw`** phones used (@tbl-prep)
 
-- **Incomplete records** were removed because PCA cannot handle missing values.
+- **Luxury editions** (2) removed: priced for materials, not specifications.
 
-- **Price** was logged because it is strongly right-skewed, and **Brand** was reduced to the seven largest brands plus Other.
+- **Incomplete records** removed: PCA cannot handle missing values.
 
-- **5G** and **NFC** recoded to No/Yes; **Xiaomi** is the base brand.
+- **Price** logged (strongly right-skewed); **brand** grouped into the top 7 plus Other.
+
+- **5G** and **NFC** recoded to No/Yes; **Xiaomi** is the base brand for comparison.
 :::
 ::::
 
@@ -208,7 +208,7 @@ The results describe how specifications relate to price for typical smartphones.
 ::::::::
 
 ::: notes
-5G and NFC were recoded to No and Yes. Xiaomi is the comparison brand in the regression. The recipe is learned from the training set only.
+Price was logged because it is strongly right-skewed. Luxury editions were removed because their prices only reflect gold and premium materials.
 :::
 
 ## Method and justification {.smaller}
@@ -312,17 +312,25 @@ Percent variance is the share of the total information that each component holds
 
 ## Number of components retained {.smaller}
 
-@tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications.
+::: fragment
+- @tbl-var and @fig-scree show that PC1 explains `r round(pc1_var, 1)`% of the variance in the six specifications.
+:::
 
+:::: fragment
 ::: {.callout-tip title="Decision"}
 The first `r n_pc` principal components are retained. They explain `r round(cum_var, 1)`% of the variance, meeting the 70% threshold, and are easy to interpret. The remaining components add little extra information.
 :::
+::::
 
+:::: fragment
 ::: {.callout-tip title="So what"}
 Each phone can now be described by `r n_pc` PCs instead of six specifications, with little loss of information.
 :::
+::::
 
-The next step is to examine the loadings to describe what each retained component represents.
+::: fragment
+- The next step is to examine the loadings to describe what each retained component represents.
+:::
 
 ::: notes
 The 70% threshold is set in step_pca(). R keeps the smallest number of components whose cumulative variance reaches 70%.
