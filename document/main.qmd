@@ -1,7 +1,0 @@
----
-title: "ETW2500_A2"
-format: revealjs
-editor: visual
----
-
-## 
