@@ -1,0 +1,293 @@
+---
+title: "Person D - What Drives Smartphone Prices?"
+subtitle: "Regression Results and Recommendations"
+format:
+  revealjs:
+    theme: default
+    chalkboard: true
+    preview-links: true
+    incremental: false
+    fig-align: center
+    code-line-numbers: true
+    background-transition: fade
+    footer: "ETW2500 Unsupervised Learning | Group 29"
+editor: visual
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| output: false
+
+library(pacman)
+p_load(tidyverse, tidymodels, here, gt)
+tidymodels_prefer()
+
+phones <- here("data/smartphone_cleaned_v5.csv") |> read_csv(show_col_types = FALSE)
+
+```
+
+```{r}
+#| label: clean
+#| output: false
+
+pca_vars <- c("processor_speed", "ram_capacity", "internal_memory",
+              "refresh_rate", "primary_camera_rear", "primary_camera_front")
+
+phones_clean <- phones |>
+  filter(!model %in% c("Vertu Signature Touch",
+                       "Xiaomi Redmi K20 Pro Signature Edition")) |>
+  mutate(log_price = log(price),
+         has_5g = fct_recode(factor(has_5g), "No" = "FALSE", "Yes" = "TRUE"),
+         has_nfc = fct_recode(factor(has_nfc), "No" = "FALSE", "Yes" = "TRUE"),
+         brand_group = fct_relevel(fct_lump_n(brand_name, n = 7), "xiaomi")) |>
+  select(log_price, all_of(pca_vars), battery_capacity, screen_size,
+         has_5g, has_nfc, brand_group) |>
+  na.omit()
+```
+
+
+```{r}
+#| label: split-recipe
+#| output: false
+set.seed(41352)
+phone_split <- phones_clean |>
+  initial_split(prop = 0.75, strata = log_price)
+phone_training <- phone_split |> training()
+phone_test <- phone_split |> testing()
+
+phone_recipe <- recipe(log_price ~ ., data = phone_training) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_pca(all_of(pca_vars), threshold = 0.7, id = "pca") |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors())
+```
+
+
+
+
+```{r}
+#| label: fit-model
+#| output: false
+
+linear_model <- linear_reg() |>
+  set_engine("lm") |>
+  set_mode("regression")
+
+phone_wkfl <- workflow() |>
+  add_model(linear_model) |>
+  add_recipe(phone_recipe)
+
+phone_fit <- phone_wkfl |>
+  fit(data = phone_training)
+
+phone_results <- phone_fit |>
+  extract_fit_parsnip() |>
+  tidy() |>
+  mutate(significance = case_when(p.value < 0.001 ~ "0.1%",
+                                  p.value < 0.01 ~ "1%",
+                                  p.value < 0.05 ~ "5%",
+                                  TRUE ~ "Not significant"))
+
+# the 7 brand dummies (each compared with Xiaomi, the base category)
+brand_terms <- c("brand_group_apple", "brand_group_motorola", "brand_group_oppo",
+                 "brand_group_realme", "brand_group_samsung", "brand_group_vivo",
+                 "brand_group_Other")
+```
+
+
+
+```{r}
+#| label: base-levels
+#| output: false
+# base category = first level of each factor
+levels(phones_clean$has_5g)
+levels(phones_clean$has_nfc)
+levels(phones_clean$brand_group)
+```
+
+
+
+
+
+
+# Regression Results {background-color="#1f4e79"}
+
+## What drives smartphone prices? {.smaller}
+
+Dependent variable: **log price**. Base categories: **Xiaomi**, **no 5G**, **no NFC**. We read the **significance level** and the **sign** only, not the size of each coefficient.
+
+::::: {.columns}
+:::: {.column width="42%"}
+```{r}
+#| label: tbl-specs
+#| tbl-cap: "Components, specifications and features"
+#| tbl-cap-location: bottom
+phone_results |>
+  filter(!term %in% brand_terms) |>
+  select(term, estimate, p.value, significance) |>
+  mutate(across(c(estimate, p.value), ~ round(.x, 3))) |>
+  gt() |>
+  cols_label(term = "Term", estimate = "Coefficient",
+             p.value = "p-value", significance = "Significance") |>
+  cols_align(align = "center", columns = c(p.value, significance)) |>
+  opt_table_outline() |>
+  tab_options(table.font.size = px(18),
+              column_labels.font.weight = "bold",
+              column_labels.vlines.style = "solid",
+              table_body.vlines.style = "solid")
+```
+::::
+
+:::: {.column width="5%"}
+::::
+
+:::: {.column width="53%"}
+```{r}
+#| label: tbl-brands
+#| tbl-cap: "Brands compared with Xiaomi"
+#| tbl-cap-location: bottom
+phone_results |>
+  filter(term %in% brand_terms) |>
+  select(term, estimate, p.value, significance) |>
+  mutate(across(c(estimate, p.value), ~ round(.x, 3))) |>
+  gt() |>
+  cols_label(term = "Term", estimate = "Coefficient",
+             p.value = "p-value", significance = "Significance") |>
+  cols_align(align = "center", columns = c(p.value, significance)) |>
+  opt_table_outline() |>
+  tab_options(table.font.size = px(18),
+              column_labels.font.weight = "bold",
+              column_labels.vlines.style = "solid",
+              table_body.vlines.style = "solid")
+```
+::::
+:::::
+
+::: notes
+Linear regression fitted on the training data with the tidymodels workflow. As the brief asks, we only fit and interpret the model; we do not evaluate its fit or prediction. A positive sign means a higher log price, and so a higher price.
+:::
+
+
+## Specifications: what raises the price? {.smaller}
+
+::: incremental
+-   **Overall performance (PC1)** has a **positive significant influence** on price at the **0.1% level** (@tbl-specs): phones with a stronger all-round bundle (processor, RAM, storage, refresh rate, cameras) are priced higher.
+-   **Storage and speed vs camera (PC2)** has a **positive significant influence** at the **0.1% level**: among phones with similar overall performance, those leaning towards storage and processing are priced higher than camera-focused ones.
+-   **Screen size** has a **positive significant influence** at the **0.1% level**: larger screens, higher price.
+-   **Battery capacity** has a **negative significant influence** at the **0.1% level**: larger batteries, lower price, likely because big batteries are a main selling point of budget phones.
+:::
+
+. . .
+
+::: {.callout-tip title="Why it matters"}
+Price follows the performance bundle and screen size, not battery size or camera megapixels alone.
+:::
+
+::: notes
+All four effects hold after taking the other variables in the model into account. PC1 and PC2 are named from C's loadings: check that the signs in our final output match these descriptions.
+:::
+
+
+
+## Features and brands vs price {.smaller}
+
+```{r}
+#| label: brand-data
+#| output: false
+brand_results <- phone_results |>
+  filter(term %in% brand_terms) |>
+  mutate(brand = case_when(term == "brand_group_apple" ~ "Apple",
+                           term == "brand_group_motorola" ~ "Motorola",
+                           term == "brand_group_oppo" ~ "Oppo",
+                           term == "brand_group_realme" ~ "Realme",
+                           term == "brand_group_samsung" ~ "Samsung",
+                           term == "brand_group_vivo" ~ "Vivo",
+                           term == "brand_group_Other" ~ "Other brands"))
+```
+
+::::: {.columns}
+:::: {.column width="50%"}
+```{r}
+#| label: fig-brand
+#| fig-cap: "Brand coefficients compared with Xiaomi (teal = significant at 5%, red = not significant)"
+#| fig-width: 6
+#| fig-height: 5
+brand_results |>
+  ggplot(aes(brand, estimate, fill = p.value < 0.05)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(x = "Brand", y = "Coefficient (log price) vs Xiaomi") +
+  theme_bw(base_size = 16)
+```
+::::
+
+:::: {.column width="50%"}
+::: fragment
+-   Phones **with NFC** are priced significantly **higher** than phones without NFC (0.1% level).
+-   Phones **with 5G** are priced significantly **higher** than phones without 5G (5% level).
+-   **Apple, Samsung** (0.1%) and **Vivo** (1%) are priced significantly **higher** than Xiaomi (@tbl-brands, @fig-brand).
+-   **Motorola** is priced significantly **lower** than Xiaomi (1% level).
+-   **Oppo, Realme** and **other brands** are **not significantly different** from Xiaomi.
+:::
+::::
+:::::
+
+::: notes
+Every brand comparison is against Xiaomi, the base category, for phones with the same specifications and features. So the brand gap is a brand premium, not a difference in hardware.
+:::
+
+
+
+## Summary of key findings
+
+::: {.callout-important title="Key findings"}
+1.  The six specifications reduce to **two components** that explain about **72%** of their variation: **overall performance (PC1)** and **storage and speed vs camera (PC2)**.
+2.  **Both components**, **screen size**, **NFC** and **5G** are linked to significantly **higher** prices; **larger batteries** are linked to **lower** prices (@tbl-specs).
+3.  **Brand matters beyond hardware:** with the same specifications, Apple, Samsung and Vivo are priced significantly higher than Xiaomi, Motorola is priced lower, and Oppo and Realme are not significantly different (@fig-brand).
+:::
+
+::: notes
+Point 1 comes from the PCA (B and C), points 2 and 3 from the regression (D). Agree the final wording of this slide with C before merging.
+:::
+
+
+# Recommendations {background-color="#1f4e79"}
+
+## Recommendation 1: performance
+
+::: {.callout-note title="Finding"}
+Overall performance (PC1) and the storage and speed focus (PC2) both have a **positive significant influence** on price at the 0.1% level, while battery capacity has a **negative** one (@tbl-specs).
+:::
+
+. . .
+
+::: {.callout-tip title="Action for manufacturers"}
+-   To launch a **higher-priced model**, upgrade the **whole performance bundle**: processor, RAM, storage and refresh rate.
+-   Favour **storage and processing** over extra camera megapixels: storage- and speed-focused phones are priced higher than camera-focused ones.
+-   Use **large batteries** to add value to **budget models**, not to charge more.
+:::
+
+::: notes
+This recommendation turns the two PCA components into a product design rule for manufacturers.
+:::
+
+## Recommendation 2: brand gap
+
+::: {.callout-note title="Finding"}
+With the same specifications, **Apple, Samsung and Vivo** are priced significantly **higher** than Xiaomi, while **Oppo and Realme** are not significantly different and **Motorola** is **lower** (@tbl-brands, @fig-brand).
+:::
+
+. . .
+
+::: {.callout-tip title="Action for retailers and brands"}
+-   Display **Xiaomi, Realme and Oppo** phones next to **Samsung and Vivo** models with matching specifications, and promote them as **"same specifications, lower price"**.
+-   Brands without a premium (**Motorola**) should compete on **specifications per price** rather than raise prices.
+:::
+
+::: notes
+This recommendation uses the brand effects, which hold after controlling for specifications, so the gap is brand value rather than better hardware.
+:::
