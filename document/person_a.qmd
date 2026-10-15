@@ -23,8 +23,8 @@ editor: visual
 ## Presenters
 
 - Ahmad Sufi
-- [Person B full name]
-- [Person C full name]
+- \[Person B full name\]
+- \[Person C full name\]
 - Hew Kai Feng
 
 ::: notes
@@ -35,14 +35,16 @@ Replace the two placeholders with the actual full names before submission. The f
 
 ## Dataset and business question {.smaller}
 
+```{=html}
 <!-- START STANDALONE SETUP: omit the next five chunks and their step notes
      when merging. Run Person B's preparation chunks once before A's content.
      Keep the a-* summary chunks below. See person_a_notes.txt for merge steps. -->
+```
 
 ::: notes
 **Step 1: Load packages**
 
-Keep these five setup chunks in person_a.qmd so it can render by itself. They match Person B's preparation. Later, the person combining the group slides should keep main.qmd's YAML and B's shared setup, and copy A's content without this marked block. Nothing needs to be deleted from this separate Person A file now. The remaining A objects have an a_ prefix to avoid overwriting teammates' objects.
+Keep these five setup chunks in person_a.qmd so it can render by itself. They match Person B's preparation. Later, the person combining the group slides should keep main.qmd's YAML and B's shared setup, and copy A's content without this marked block. Nothing needs to be deleted from this separate Person A file now. The remaining A objects have an a\_ prefix to avoid overwriting teammates' objects.
 :::
 
 ```{r a-standalone-packages, include=FALSE}
@@ -201,13 +203,13 @@ One record is a listed smartphone model or variant, not a buyer. These are obser
 
 ## PCA input variables {.smaller}
 
-| Variable | Type | Meaning / unit |
-|---|---|---|
-| `processor_speed` | Numeric | Processor speed (GHz) |
-| `ram_capacity` | Numeric | RAM (GB) |
-| `internal_memory` | Numeric | Internal storage (GB) |
-| `refresh_rate` | Numeric | Display refresh rate (Hz) |
-| `primary_camera_rear` | Numeric | Main rear-camera resolution (MP) |
+| Variable               | Type    | Meaning / unit                    |
+|------------------------|---------|-----------------------------------|
+| `processor_speed`      | Numeric | Processor speed (GHz)             |
+| `ram_capacity`         | Numeric | RAM (GB)                          |
+| `internal_memory`      | Numeric | Internal storage (GB)             |
+| `refresh_rate`         | Numeric | Display refresh rate (Hz)         |
+| `primary_camera_rear`  | Numeric | Main rear-camera resolution (MP)  |
 | `primary_camera_front` | Numeric | Main front-camera resolution (MP) |
 
 - **Six inputs**, standardised because their units differ.
@@ -216,7 +218,7 @@ One record is a listed smartphone model or variant, not a buyer. These are obser
 ## Outcome and extra predictors {.smaller}
 
 | Variable | Type | Meaning / role |
-|---|---|---|
+|------------------------|------------------------|------------------------|
 | `price` | Numeric | Listed price (₹), used to create the outcome |
 | `log_price` | Numeric | Natural log of price in ₹, the outcome |
 | `battery_capacity` | Numeric | Battery capacity (mAh) |
@@ -251,8 +253,8 @@ The correlation is computed on exactly the same complete records as B's correlat
 ::: {.column width="50%"}
 **Objectives**
 
-1. Summarise related smartphone specifications into components and interpret their profiles.
-2. Examine how the components and five additional predictors are associated with smartphone price.
+1.  Summarise related smartphone specifications into components and interpret their profiles.
+2.  Examine how the components and five additional predictors are associated with smartphone price.
 :::
 
 ::: {.column width="50%"}
@@ -284,7 +286,7 @@ a_missing |>
               table_body.vlines.style = "solid")
 ```
 
-- **`r sum(a_missing$missing > 0)` used variables** have missing values, with processor speed having the most.
+- **`r sum(a_missing$missing > 0)` used variables** have missing values, with processor speed having the most (@tbl-a-missing).
 - **`r a_luxury_removed` luxury editions** excluded to match the group's product scope.
 - **`r a_incomplete_removed` incomplete records** removed, leaving **`r nrow(phones_clean)` phones**.
 
@@ -312,11 +314,13 @@ a_numeric_summary |>
               table_body.vlines.style = "solid")
 ```
 
-- Summaries use **`r nrow(phones_clean)` complete records**, before splitting.
+- Summaries use **`r nrow(phones_clean)` complete records**, before splitting (@tbl-a-spec-summary).
 - Different units and ranges support **standardising before PCA**.
 
 ## Outcome and feature summary {.smaller}
 
+::::: columns
+::: {.column width="62%"}
 ```{r}
 #| label: tbl-a-other-summary
 #| tbl-cap: "Log price and the two extra numeric predictors"
@@ -334,7 +338,9 @@ a_numeric_summary |>
               column_labels.vlines.style = "solid",
               table_body.vlines.style = "solid")
 ```
+:::
 
+::: {.column width="38%"}
 ```{r}
 #| label: tbl-a-connectivity
 #| tbl-cap: "Connectivity features in the complete sample"
@@ -356,6 +362,11 @@ phones_clean |>
               column_labels.vlines.style = "solid",
               table_body.vlines.style = "solid")
 ```
+:::
+:::::
+
+- Battery capacity (mAh) and screen size (inches) use **different scales**. Both are **standardised before regression** (@tbl-a-other-summary).
+- **5G** is available in **`r round(100 * mean(phones_clean$has_5g == "Yes"), 1)`%** of phones and **NFC** in **`r round(100 * mean(phones_clean$has_nfc == "Yes"), 1)`%** (@tbl-a-connectivity).
 
 ## Why use log price? {.smaller}
 
@@ -376,15 +387,17 @@ phones_clean |>
   theme_bw(base_size = 15)
 ```
 
-- **`r nrow(phones_clean)` retained phones**, matching the analysis sample.
+- **`r nrow(phones_clean)` retained phones**, matching the analysis sample (@fig-a-price).
 - Log price **compresses the upper tail** and supports interpreting proportional price differences.
 
 ::: notes
 exp(log_price) recovers the original numerical ₹ prices for the same complete records without changing phones_clean. The two panels have different horizontal scales. A skewed outcome alone does not violate linear regression assumptions. Taking logs is a modelling choice, not proof that assumptions are satisfied. Scenario 6 requires fitting and interpreting the model, not evaluating predictive performance.
 :::
 
+```{=html}
 <!-- At the final merge, insert B, C and D's analysis slides before References.
      Keep all group references together before the final Thank you slide. -->
+```
 
 ## References {.smaller}
 
