@@ -13,6 +13,7 @@ format:
     code-line-numbers: true
     background-transition: fade
     footer: "ETW2500 Unsupervised Learning | Group 29"
+    css: styles.css
 editor: visual
 execute:
   echo: false
@@ -697,6 +698,520 @@ Percent variance is the share of the total information that each component holds
 The 70% threshold is set in step_pca(). R keeps the smallest number of components whose cumulative variance reaches 70%.
 :::
 
+```{r}
+#| label: c-objects
+#| output: false
+# Person C objects. Uses phone_prep and phone_training from Person B.
+
+# 1. Loadings: one row per specification x component (Week 7/8 PCA lecture)
+pca_loadings <- tidy(phone_prep, id = "pca", type = "coef")
+
+# Number of components kept by threshold = 0.7 (= PC columns after bake)
+c_pc_scores <- bake(phone_prep, new_data = NULL) |>
+  select(starts_with("PC"))
+kept_pcs <- names(c_pc_scores)
+
+# Variance explained by the kept components (for the text)
+c_var <- tidy(phone_prep, id = "pca", type = "variance")
+pc_pct <- c_var |>
+  filter(terms == "percent variance", component <= length(kept_pcs)) |>
+  pull(value)
+pc_cum <- c_var |>
+  filter(terms == "cumulative percent variance",
+         component == length(kept_pcs)) |>
+  pull(value)
+
+# Readable names for the six specifications (units in brackets)
+spec_vars <- c("processor_speed", "ram_capacity", "internal_memory",
+               "refresh_rate", "primary_camera_rear", "primary_camera_front")
+spec_labels <- c(
+  processor_speed      = "Processor speed (GHz)",
+  ram_capacity         = "RAM (GB)",
+  internal_memory      = "Storage (GB)",
+  refresh_rate         = "Refresh rate (Hz)",
+  primary_camera_rear  = "Rear camera (MP)",
+  primary_camera_front = "Front camera (MP)"
+)
+
+# Group style for charts: same colours and fonts as styles.css
+theme_slides <- function(base_size = 16) {
+  theme_minimal(base_size = base_size) +
+    theme(text = element_text(colour = "#1F2933"),
+          axis.text = element_text(colour = "#5F6B7A"),
+          panel.grid.minor = element_blank(),
+          panel.grid.major = element_line(colour = "#E6ECF2"),
+          strip.text = element_text(face = "bold", colour = "#1F4E79",
+                                    size = rel(1.05), hjust = 0),
+          legend.position = "top",
+          legend.justification = "left")
+}
+
+# Group style for gt tables: same style as the other tables in the deck
+slide_table <- function(tbl, font_px = 18) {
+  tbl |>
+    opt_table_outline() |>
+    tab_options(table.font.size = px(font_px),
+                column_labels.font.weight = "bold",
+                column_labels.vlines.style = "solid",
+                table_body.vlines.style = "solid")
+}
+
+# Loading of one specification on one component (used in the text)
+ld <- function(pc, spec) {
+  pca_loadings |>
+    filter(component == pc, terms == spec) |>
+    pull(value) |>
+    round(2)
+}
+
+# Sign check: signs can flip between computers (Week 7/8 lecture).
+# Both must be TRUE for the component names below to be correct.
+pc1_loadings <- pca_loadings |>
+  filter(component == "PC1") |>
+  pull(value)
+pc1_all_positive <- all(pc1_loadings > 0)
+pc2_storage_vs_camera <- ld("PC2", "internal_memory") > 0 &
+  ld("PC2", "primary_camera_rear") < 0
+
+# 2. Part (a) descriptive analysis: average specifications of phones with
+#    low, middle and high component scores. bake() replaces the six specs
+#    with PC1 and PC2, so join the scores back to the original training rows.
+pc_profile <- bind_cols(phone_training, c_pc_scores)
+
+profile_long <- map_dfr(kept_pcs, \(pc) {
+  pc_profile |>
+    mutate(group = ntile(.data[[pc]], 3),
+           group = factor(group, levels = 1:3,
+                          labels = c("Low", "Middle", "High"))) |>
+    group_by(group) |>
+    summarise(phones = n(), across(all_of(spec_vars), mean),
+              price = median(exp(log_price))) |>
+    pivot_longer(-group, names_to = "spec", values_to = "mean") |>
+    mutate(component = pc)
+})
+
+# Average of one specification in one group (used in the text)
+avg <- function(pc, grp, spec, digits = 0) {
+  profile_long |>
+    filter(component == pc, group == grp, spec == !!spec) |>
+    pull(mean) |>
+    round(digits)
+}
+
+# 3. Price map data: the training phones with their names, prices and
+#    which side of PC2 they fall on. Rows of phone_training are
+#    phones_clean[phone_split$in_id, ], so the model names line up exactly.
+phones_named <- phones |>
+  filter(!model %in% c("Vertu Signature Touch",
+                       "Xiaomi Redmi K20 Pro Signature Edition")) |>
+  select(model, price, all_of(spec_vars), battery_capacity, screen_size,
+         has_5g, has_nfc, brand_name) |>
+  na.omit()
+# Safety check: same phones in the same order as phones_clean
+stopifnot(nrow(phones_named) == nrow(phones_clean),
+          all(phones_named[spec_vars] == phones_clean[spec_vars]))
+
+# Prices are kept in the dataset's original currency, Indian rupees (₹).
+
+phone_map <- pc_profile |>
+  mutate(model = phones_named$model[phone_split$in_id],
+         price = exp(log_price),
+         focus = if_else(PC2 > 0, "Memory and speed focused", "Camera focused"),
+         focus = factor(focus, levels = c("Memory and speed focused",
+                                          "Camera focused")))
+
+# Five well-known phones to label, with label offsets so they do not overlap
+example_phones <- tribble(
+  ~model,                        ~label,             ~nudge_x, ~nudge_y,
+  "Redmi 12C",                   "Redmi 12C",         0.3,     -0.45,
+  "Nothing Phone 1",             "Nothing Phone 1",   0.0,     -0.55,
+  "OnePlus 11 5G",               "OnePlus 11",       -0.2,      0.40,
+  "Samsung Galaxy S23 Ultra 5G", "Galaxy S23 Ultra",  0.2,      0.38,
+  "Apple iPhone 13",             "iPhone 13",        -0.9,      0.30
+) |>
+  inner_join(phone_map |> select(model, PC1, price, focus), by = "model")
+
+focus_colours <- c("Memory and speed focused" = "#2C7FB8",
+                   "Camera focused" = "#D95F02")
+
+# Correlation between PC1 and log price (used in the text)
+pc1_price_cor <- round(cor(phone_map$PC1, phone_map$log_price), 2)
+
+# Price in rupees of one labelled phone (used in the text)
+ex_price <- function(phone) {
+  example_phones |>
+    filter(label == phone) |>
+    pull(price) |>
+    round() |>
+    scales::comma()
+}
+
+# One "low vs high" row for the part (a) slide: label | low | high
+stat_row <- function(pc, spec, label, unit, digits = 0, down = FALSE) {
+  show <- function(x) {
+    if (unit == "₹") scales::comma(x) else paste(x, unit)
+  }
+  lo <- show(avg(pc, "Low", spec, digits))
+  hi <- show(avg(pc, "High", spec, digits))
+  cls <- if (down) "stat down" else "stat"
+  paste0('<div class="', cls, '"><span class="stat-label">', label,
+         '</span><span class="stat-low">', lo,
+         '</span><span class="stat-value">', hi, "</span></div>")
+}
+
+# Wide table for a slide: rows = specifications, columns = Low / Middle / High
+profile_table <- function(pc) {
+  profile_long |>
+    filter(component == pc) |>
+    select(-component) |>
+    pivot_wider(names_from = group, values_from = mean) |>
+    mutate(spec = case_when(spec == "phones" ~ "Phones",
+                            spec == "price" ~ "Median price (₹)",
+                            .default = unname(spec_labels[spec]))) |>
+    gt() |>
+    cols_label(spec = "Specification (average)") |>
+    fmt_number(columns = c(Low, Middle, High), decimals = 1) |>
+    fmt_number(columns = c(Low, Middle, High),
+               rows = spec == "Processor speed (GHz)", decimals = 2) |>
+    fmt_number(columns = c(Low, Middle, High),
+               rows = spec %in% c("Phones", "Median price (₹)"),
+               decimals = 0) |>
+    slide_table(font_px = 17)
+}
+
+# Median price of one third, formatted (used in the text)
+third_price <- function(pc, grp) {
+  avg(pc, grp, "price") |> scales::comma()
+}
+
+# 4. Share of each specification kept by the retained components
+#    (communality = sum over kept PCs of loading^2 x eigenvalue)
+pc_eigen <- c_var |>
+  filter(terms == "variance", component <= length(kept_pcs)) |>
+  arrange(component) |>
+  pull(value)
+share_kept <- pca_loadings |>
+  filter(component %in% kept_pcs) |>
+  mutate(eigen = pc_eigen[parse_number(component)]) |>
+  group_by(terms) |>
+  summarise(kept = 100 * sum(value^2 * eigen))
+kept_pct <- function(spec) {
+  share_kept |> filter(terms == spec) |> pull(kept) |> round()
+}
+# Specification name without its unit, e.g. "Refresh rate"
+spec_name <- function(spec) str_remove(unname(spec_labels[spec]), " \\(.*\\)")
+kept_min <- share_kept |> slice_min(kept, n = 1, with_ties = FALSE)
+kept_max <- share_kept |> slice_max(kept, n = 1, with_ties = FALSE)
+# All specifications that round to the lowest share (e.g. two at 62%)
+kept_low_names <- share_kept |>
+  filter(round(kept) == round(kept_min$kept)) |>
+  pull(terms) |>
+  spec_name() |>
+  str_to_lower() |>
+  str_flatten(collapse = ", ", last = " and ")
+
+# 5. Market positioning map: phones split by the sign of their PC1 score
+#    (budget vs flagship side) and PC2 score (camera vs memory focus)
+quadrants <- phone_map |>
+  mutate(tier = factor(if_else(PC1 > 0, "Flagship side", "Budget side"),
+                       levels = c("Budget side", "Flagship side"))) |>
+  group_by(tier, focus) |>
+  summarise(phones = n(),
+            median_price = median(price),
+            nfc = 100 * mean(has_nfc == "Yes"),
+            .groups = "drop")
+
+# Median price and NFC share of one cell, formatted (used in the text)
+q_price <- function(tier, focus) {
+  quadrants |>
+    filter(tier == !!tier, str_starts(as.character(focus), !!focus)) |>
+    pull(median_price) |> round() |> scales::comma()
+}
+q_nfc <- function(tier, focus) {
+  quadrants |>
+    filter(tier == !!tier, str_starts(as.character(focus), !!focus)) |>
+    pull(nfc) |> round()
+}
+
+# Trend-line price for each colour group at a typical budget score (10th
+# percentile of PC1) and a typical flagship score (90th percentile).
+# Same straight-line fit on log price as the lines in the price map.
+pc1_budget <- quantile(phone_map$PC1, 0.10)
+pc1_flagship <- quantile(phone_map$PC1, 0.90)
+trend_price <- function(focus, score) {
+  group <- filter(phone_map, str_starts(as.character(focus), !!focus))
+  fit <- lm(log(price) ~ PC1, data = group)
+  exp(predict(fit, tibble(PC1 = score))) |> round(-2) |> scales::comma()
+}
+
+# iPhone 13 against phones with a similar overall performance score
+iphone_pc1 <- example_phones |> filter(label == "iPhone 13") |> pull(PC1)
+similar_price <- phone_map |>
+  filter(abs(PC1 - iphone_pc1) < 0.25, brand_group != "apple") |>
+  summarise(n = n(), median = median(price))
+```
+
+# What do the components mean? {background-color="#1f4e79" style="text-align: center;"}
+
+## How each specification loads {.smaller}
+
+::::::: columns
+::: {.column width="56%"}
+```{r}
+#| label: tbl-loadings
+#| tbl-cap: "Loadings on each retained component and the share of each specification they keep."
+#| tbl-cap-location: bottom
+pca_loadings |>
+  filter(component %in% kept_pcs) |>
+  pivot_wider(id_cols = terms, names_from = component, values_from = value) |>
+  left_join(share_kept, by = "terms") |>
+  mutate(terms = unname(spec_labels[terms])) |>
+  gt() |>
+  cols_label(terms = "Specification", kept = "Kept (%)") |>
+  fmt_number(columns = all_of(kept_pcs), decimals = 2) |>
+  fmt_number(columns = kept, decimals = 0) |>
+  slide_table(font_px = 22)
+```
+:::
+
+::::: {.column width="44%"}
+::: {.card .navy}
+[How to read the table]{.kicker}
+
+**Loading:** from −1 to 1, how strongly a specification moves with a component. Further from 0 = stronger link.
+
+**Kept:** share of a specification's variation that PC1 and PC2 hold together.
+:::
+
+::: fragment
+- **PC1:** every loading is **positive** (@tbl-loadings)
+- **PC2:** storage and processor speed **positive**, both cameras **negative**, refresh rate close to **0** (@tbl-loadings)
+- **Kept:** from `r round(kept_min$kept)`% (`r kept_low_names`) to `r round(kept_max$kept)`% (`r spec_name(kept_max$terms)`) (@tbl-loadings)
+:::
+:::::
+:::::::
+
+::: notes
+The loadings come from B's prepped recipe with tidy(phone_prep, id = "pca", type = "coef"); "pca" is the id B gave to step_pca. Only the components kept by the 70% threshold are shown. "Kept" is the communality: for each specification, the sum over PC1 and PC2 of the squared loading times the component's eigenvalue (variance). It tells us how well two components represent each original specification. The weakest are refresh rate and the front camera (about `r round(kept_min$kept)`%), so the remaining variation in those two sits in the components that were dropped. If asked about the code, open the .qmd: the c-objects chunk computes these values.
+:::
+
+## Two components describe the hardware {.smaller}
+
+::::::: columns
+::: {.column width="50%"}
+```{r}
+#| label: fig-top-loadings
+#| fig-cap: "The three largest loadings on each component. Blue = positive, orange = negative."
+#| fig-width: 6.2
+#| fig-height: 5.4
+pca_loadings |>
+  filter(component %in% kept_pcs) |>
+  group_by(component) |>
+  slice_max(abs(value), n = 3) |>
+  ungroup() |>
+  mutate(spec = fct_reorder(unname(spec_labels[terms]), abs(value)),
+         sign = if_else(value > 0, "Positive", "Negative")) |>
+  ggplot(aes(x = abs(value), y = spec, fill = sign)) +
+  geom_col(width = 0.7) +
+  facet_wrap(~ component, scales = "free_y", ncol = 1) +
+  scale_fill_manual(values = c(Positive = "#2C7FB8", Negative = "#D95F02")) +
+  scale_x_continuous(limits = c(0, 0.8), expand = c(0, 0)) +
+  labs(x = "Absolute loading", y = NULL, fill = NULL) +
+  theme_slides()
+```
+:::
+
+::::: {.column width="50%"}
+::: {.card .fragment}
+[PC1 · `r round(pc_pct[1], 1)`% of the variance]{.kicker} [Overall performance]{.big}
+
+- All six loadings are **positive** (`r round(min(pc1_loadings), 2)` to `r round(max(pc1_loadings), 2)`), led by RAM (@tbl-loadings)
+- Phones strong in one specification tend to be strong in the others (@fig-top-loadings)
+:::
+
+::: {.card .orange .fragment}
+[PC2 · `r round(pc_pct[2], 1)`% of the variance]{.kicker} [Storage and speed vs camera]{.big}
+
+- Storage (`r ld("PC2", "internal_memory")`) and processor speed (`r ld("PC2", "processor_speed")`) **positive**; rear (`r ld("PC2", "primary_camera_rear")`) and front cameras (`r ld("PC2", "primary_camera_front")`) **negative** (@tbl-loadings)
+- Refresh rate is close to 0 (`r ld("PC2", "refresh_rate")`), so PC2 does not reflect it (@tbl-loadings)
+- A **balance**, not a level: phones lean towards memory or towards cameras (@fig-top-loadings)
+:::
+:::::
+:::::::
+
+::: notes
+@tbl-loadings shows all loadings and @fig-top-loadings shows the three largest per component. Same colour means the specifications move together; opposite colours mean a trade-off. Before rotation, all variables tend to load highly on the first component, as the PCA lecture explains, which is why PC1 is an overall factor. PC2 is a contrast: a high score means storage and speed are high relative to the cameras, not that a phone has a lot of storage in absolute terms. Sign check for this render: PC1 all positive = `r pc1_all_positive`; PC2 storage positive and rear camera negative = `r pc2_storage_vs_camera`. If either is FALSE, the signs flipped on this computer: swap "high" and "low" in the wording on this slide and the following ones.
+:::
+
+## What high and low PC1 scores look like {.smaller}
+
+::::: columns
+::: {.column width="50%"}
+```{r}
+#| label: tbl-pc1-profile
+#| tbl-cap: "Averages by PC1 third (training phones)."
+#| tbl-cap-location: bottom
+profile_table("PC1")
+```
+:::
+
+::: {.column width="50%"}
+```{r}
+#| output: asis
+cat('<div class="stat-head"><span>Low vs high PC1</span><span>Low</span><span>High</span></div>',
+    stat_row("PC1", "ram_capacity", "RAM", "GB", digits = 1),
+    stat_row("PC1", "internal_memory", "Storage", "GB"),
+    stat_row("PC1", "refresh_rate", "Refresh rate", "Hz"),
+    stat_row("PC1", "primary_camera_rear", "Rear camera", "MP"),
+    stat_row("PC1", "price", "Median price (₹)", "₹"),
+    sep = "\n")
+```
+
+[**Every** specification and the median price rise from low to high: PC1 separates **budget** from **flagship** phones (@tbl-pc1-profile).]{.note-line}
+:::
+:::::
+
+::: notes
+This is the descriptive analysis the brief asks for in part (a): the components are described with the six variables that built them. The `r nrow(pc_profile)` training phones are split into three equal groups by score with ntile(), and the original specifications are averaged in each group (@tbl-pc1-profile, @tbl-pc2-profile). The last row is the median price, because price is right-skewed and a few flagships would pull a mean upwards. The right-hand rows repeat the clearest low and high values from the table. Blue = higher for high scorers; orange = lower for high scorers. These are descriptive averages, not significance tests.
+:::
+
+## What high and low PC2 scores look like {.smaller}
+
+::::: columns
+::: {.column width="50%"}
+```{r}
+#| label: tbl-pc2-profile
+#| tbl-cap: "Averages by PC2 third (training phones)."
+#| tbl-cap-location: bottom
+profile_table("PC2")
+```
+:::
+
+::: {.column width="50%"}
+```{r}
+#| output: asis
+cat('<div class="stat-head"><span>Low vs high PC2</span><span>Low</span><span>High</span></div>',
+    stat_row("PC2", "internal_memory", "Storage", "GB"),
+    stat_row("PC2", "ram_capacity", "RAM", "GB", digits = 1),
+    stat_row("PC2", "primary_camera_rear", "Rear camera", "MP", down = TRUE),
+    stat_row("PC2", "primary_camera_front", "Front camera", "MP", down = TRUE),
+    stat_row("PC2", "price", "Median price (₹)", "₹"),
+    sep = "\n")
+```
+
+[A **balance**: high scorers carry more storage, low scorers bigger cameras. The middle third has the least storage (`r avg("PC2", "Middle", "internal_memory")` GB) (@tbl-pc2-profile).]{.note-line}
+:::
+:::::
+
+:::: fragment
+::: {.callout-tip title="Why it matters"}
+Two levers position a phone: **how much hardware** it has (PC1) and **where that hardware goes** (PC2).
+:::
+::::
+
+::: notes
+PC2 is a balance, which is why the middle third has the least storage (`r avg("PC2", "Middle", "internal_memory")` GB) and the lowest median price (₹`r third_price("PC2", "Middle")`): those phones are average on both memory and cameras. These are descriptive averages, not significance tests.
+:::
+
+## Better-equipped phones cost more {.smaller}
+
+::::::: columns
+::: {.column width="60%"}
+```{r}
+#| label: fig-price-map
+#| fig-cap: "Price (₹) against overall performance score. Blue = leans towards memory and speed (PC2 above 0); orange = leans towards cameras (PC2 below 0). Lines show each group's trend."
+#| fig-width: 8
+#| fig-height: 5.6
+phone_map |>
+  ggplot(aes(x = PC1, y = price, colour = focus)) +
+  geom_point(size = 1.8, alpha = 0.35) +
+  geom_smooth(method = "lm", formula = y ~ x, se = FALSE, linewidth = 1.6) +
+  geom_point(data = example_phones, size = 3.5, shape = 21,
+             fill = "white", stroke = 1.6, show.legend = FALSE) +
+  geom_label(data = example_phones,
+             aes(x = PC1 + nudge_x, y = price * exp(nudge_y), label = label),
+             colour = "#1F2933", fill = "white", size = 4.2,
+             label.size = 0.2, show.legend = FALSE) +
+  scale_y_log10(labels = scales::label_comma(),
+                breaks = c(5000, 10000, 20000, 50000, 100000, 200000)) +
+  scale_colour_manual(values = focus_colours) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3))) +
+  labs(x = "Overall performance score (PC1): low = budget, high = flagship",
+       y = "Price in rupees (log scale)", colour = NULL) +
+  theme_slides()
+```
+:::
+
+::::: {.column width="40%"}
+::: fragment
+[`r pc1_price_cor`]{.hero} [correlation between PC1 and log price]{.kicker}
+
+[Redmi 12C ₹`r ex_price("Redmi 12C")` to Galaxy S23 Ultra ₹`r ex_price("Galaxy S23 Ultra")` (@fig-price-map)]{.note-line}
+:::
+
+::: fragment
+- **Lines split at the top:** typical flagship ₹`r trend_price("Memory", pc1_flagship)` (memory) vs ₹`r trend_price("Camera", pc1_flagship)` (camera); typical budget phone ₹`r trend_price("Memory", pc1_budget)` vs ₹`r trend_price("Camera", pc1_budget)` (@fig-price-map)
+- **iPhone 13:** ₹`r ex_price("iPhone 13")`, against ₹`r scales::comma(round(similar_price$median))` for phones with a similar PC1 score (@fig-price-map)
+:::
+:::::
+:::::::
+
+::: notes
+Each dot is one training phone. The x-axis is the PC1 score. Colour splits phones by the sign of their PC2 score: blue = above 0 (memory and speed), orange = below 0 (camera). Each line is a straight-line trend of log price on PC1 within one group. "Typical flagship" = the 90th percentile of PC1 (score `r round(pc1_flagship, 1)`), "typical budget phone" = the 10th percentile (score `r round(pc1_budget, 1)`); the prices are read off the two trend lines (budget: ₹`r trend_price("Memory", pc1_budget)` memory-focused vs ₹`r trend_price("Camera", pc1_budget)` camera-focused). The gap between the lines grows with performance, so the extra paid for memory is largest among flagships; the next slide shows this directly. A similar PC1 score for the iPhone 13 = the `r similar_price$n` non-Apple phones whose PC1 score is within 0.25 of the iPhone 13's. Price is on a log scale because it is right-skewed; equal steps up the axis are equal percentage increases. Prices are in Indian rupees (₹), the currency recorded in the dataset. These are descriptive patterns; the regression controls for the other predictors.
+:::
+
+## The memory premium is largest among flagships {.smaller}
+
+:::::::: columns
+::: {.column width="55%"}
+```{r}
+#| label: fig-positioning
+#| fig-cap: "Median price (₹) of the training phones in each corner of the PC1 × PC2 map (split at 0 on each score)."
+#| fig-width: 6.6
+#| fig-height: 4.8
+quadrants |>
+  mutate(focus = fct_recode(fct_rev(focus),
+                            "Camera focused\n(PC2 below 0)" = "Camera focused",
+                            "Memory and speed\nfocused (PC2 above 0)" = "Memory and speed focused"),
+         tier = fct_recode(tier,
+                           "Budget side\n(PC1 below 0)" = "Budget side",
+                           "Flagship side\n(PC1 above 0)" = "Flagship side"),
+         ink = if_else(median_price > 30000, "white", "#1F2933")) |>
+  ggplot(aes(x = focus, y = tier, fill = median_price)) +
+  geom_tile(colour = "white", linewidth = 3) +
+  geom_text(aes(label = scales::comma(round(median_price)),
+                colour = ink), fontface = "bold", size = 7.5, vjust = -0.3) +
+  geom_text(aes(label = paste0(phones, " phones\n", round(nfc), "% with NFC"),
+                colour = ink), size = 4.6, vjust = 1.2, lineheight = 0.95) +
+  scale_fill_gradient(low = "#DCEAF6", high = "#1F4E79", guide = "none") +
+  scale_colour_identity() +
+  labs(x = "Where the hardware goes (PC2)", y = "How much hardware (PC1)") +
+  theme_slides() +
+  theme(panel.grid.major = element_blank(),
+        axis.text = element_text(size = 13, colour = "#1F2933"))
+```
+:::
+
+:::::: {.column width="45%"}
+::: fragment
+- **Flagships:** memory ₹`r q_price("Flagship side", "Memory")` vs camera ₹`r q_price("Flagship side", "Camera")` (@fig-positioning)
+- **Budget phones:** no clear premium; camera ₹`r q_price("Budget side", "Camera")` vs memory ₹`r q_price("Budget side", "Memory")` (@fig-positioning)
+- **NFC:** `r q_nfc("Flagship side", "Memory")`% of memory-focused flagships vs `r q_nfc("Flagship side", "Camera")`% of camera-focused ones (@fig-positioning)
+:::
+
+:::: fragment
+::: {.callout-tip title="So what"}
+Storage and speed go with the highest prices **at the top end**; budget phones can lead on cameras at a similar price.
+:::
+::::
+::::::
+::::::::
+
+::: notes
+Each training phone is placed in one of four corners by the sign of its two scores: PC1 above or below 0 (flagship or budget side) and PC2 above or below 0 (memory or camera focus). Each tile shows the median price, the number of phones and the share with NFC. The regression finds a positive PC2 effect (@tbl-specs); that is an average over all phones. This map shows where it comes from: the gap is large among flagships and small among budget phones. Memory-focused budget phones are also weaker overall (lower PC1), so the two budget tiles are not a like-for-like comparison; at the same PC1, the trend lines on the previous slide put memory-focused phones slightly higher. Part of the flagship gap travels with connectivity, since memory-focused flagships have NFC more often; the regression separates these effects. Medians are descriptive, so no significance claim is made here.
+:::
+
+
 
 
 
@@ -857,12 +1372,13 @@ brand_results <- phone_results |>
 :::: {.column width="50%"}
 ```{r}
 #| label: fig-brand
-#| fig-cap: "Brand coefficients compared with Xiaomi (teal = significant at 5%, red = not significant)"
+#| fig-cap: "Brand coefficients compared with Xiaomi (blue = significant at 5%, grey = not significant)"
 #| fig-width: 6
 #| fig-height: 5
 brand_results |>
   ggplot(aes(label, estimate, fill = p.value < 0.05)) +
   geom_col(show.legend = FALSE) +
+  scale_fill_manual(values = c("TRUE" = "#2C7FB8", "FALSE" = "#9AA5B1")) +
   coord_flip() +
   labs(x = "Brand", y = "Coefficient (log price) vs Xiaomi") +
   theme_bw(base_size = 16)
@@ -886,16 +1402,52 @@ Every brand comparison is against Xiaomi, the base category, for phones with sim
 
 
 
-## Summary of key findings
+# Summary {background-color="#1f4e79" style="text-align: center;"}
 
-::: {.callout-important title="Key findings"}
-1.  The six specifications reduce to **two components** that explain about **72%** of their variation: **overall performance (PC1)** and **storage and speed vs camera (PC2)**.
-2.  **Both components**, **screen size**, **NFC** and **5G** are linked to significantly **higher** prices; **larger batteries** are linked to **lower** prices (@tbl-specs).
-3.  **Brand matters beyond hardware:** with similar specifications, Apple, Samsung and Vivo are priced significantly higher than Xiaomi, Motorola is priced lower, and Oppo and Realme are not significantly different (@fig-brand).
+## Key findings {.smaller}
+
+::::::: {.grid2 .compact}
+::: {.card .navy .fragment}
+[1 · PCA]{.kicker} [Two components summarise the hardware]{.big}
+
+Overall performance (PC1) and storage and speed vs camera (PC2) explain `r round(pc_cum, 1)`% of the variation in the six specifications (@tbl-loadings, @fig-top-loadings)
+
+[**Use:** compare a phone with its rivals on 2 scores instead of 6 specifications]{.so}
 :::
 
+::: {.card .fragment}
+[2 · Specifications]{.kicker} [Better-equipped phones cost more]{.big}
+
+Both components and screen size raise price at the 0.1% level; a larger battery lowers it (@tbl-specs)
+
+[**Size:** median ₹`r third_price("PC1", "Low")` (low PC1 third) vs ₹`r third_price("PC1", "High")` (high third) (@tbl-pc1-profile)]{.so}
+:::
+
+::: {.card .fragment}
+[3 · Connectivity]{.kicker} [NFC and 5G add a premium]{.big}
+
+NFC at the 0.1% level and 5G at the 5% level, compared with phones without them (@tbl-specs)
+
+[**Where:** NFC in `r q_nfc("Flagship side", "Memory")`% of memory-focused flagships vs `r q_nfc("Budget side", "Camera")`% of camera-focused budget phones (@fig-positioning)]{.so}
+:::
+
+::: {.card .orange .fragment}
+[4 · Brand]{.kicker} [Brand matters beyond hardware]{.big}
+
+Apple, Samsung and Vivo are priced above Xiaomi, Motorola below; Oppo, Realme and Other do not differ (@tbl-brands)
+
+[**Example:** iPhone 13 at ₹`r ex_price("iPhone 13")` vs ₹`r scales::comma(round(similar_price$median))` for phones with a similar PC1 score (@fig-price-map)]{.so}
+:::
+:::::::
+
+:::: fragment
+::: {.callout-important title="Bottom line"}
+Price follows the **whole hardware bundle** and the **brand name**. The memory premium is largest among flagships (₹`r q_price("Flagship side", "Memory")` vs ₹`r q_price("Flagship side", "Camera")`), with no clear gap among budget phones (@fig-positioning, @tbl-specs).
+:::
+::::
+
 ::: notes
-Point 1 comes from the PCA; points 2 and 3 come from the regression.
+Card 1 comes from the PCA (B and C). Cards 2 to 4 come from the regression (D) and were checked against the seed 41352 output: PC1, PC2, screen size, battery, NFC, Apple and Samsung at 0.1%; Vivo and Motorola at 1%; 5G at 5%; Oppo, Realme and Other not significant. "Raise price" means a positive significant influence on log price, holding the other variables constant. The lines starting with Use, Size, Where and Example are descriptive figures from the training phones (medians and shares), not regression coefficients. The bottom line combines D's positive PC2 result with the positioning map: the PC2 effect is an average, and the descriptive gap is concentrated among flagships.
 :::
 
 
@@ -911,7 +1463,7 @@ Overall performance (PC1) and the storage and speed focus (PC2) both have a **po
 
 ::: {.callout-tip title="Action for manufacturers"}
 -   To launch a **higher-priced model**, upgrade the **whole performance bundle**: processor, RAM, storage, refresh rate and cameras together.
--   At the **same overall performance**, favour **storage and processing** over extra camera megapixels: storage- and speed-focused phones are priced higher than camera-focused ones.
+-   At the **same overall performance**, favour **storage and processing** over extra camera megapixels: storage- and speed-focused phones are priced higher than camera-focused ones, most of all among flagships (@fig-positioning).
 -   Use **large batteries** to add value to **budget models**, not to charge more.
 :::
 
