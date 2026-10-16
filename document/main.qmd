@@ -80,7 +80,6 @@ phone_rec <- recipe(log_price ~ ., data = phone_training) |>
 phone_prep <- prep(phone_rec)
 ```
 
-
 # Data preparation and PCA {background-color="#1F4E79"}
 
 ```{r}
@@ -219,7 +218,7 @@ Price was logged because it is strongly right-skewed. Luxury editions were remov
 | Choice | Reason |
 |------------------------------------|------------------------------------|
 | **PCA** on six specifications | Specifications overlap (@fig-corr); a few uncorrelated components avoid multicollinearity. |
-| **Standardise** before PCA | Units differ (GB, GHz, Hz, MP); stops large-number from dominating. |
+| **Standardise** before PCA | Units differ (GB, GHz, Hz, MP); stops variables with large-number from dominating. |
 | **Linear regression** | Log price is numeric; the question is what drives price. |
 | **Variables left out** | Rating: largely explained by the specifications. Fast charging: missing for most iPhones. |
 
@@ -235,7 +234,7 @@ Normalise comes before the dummy step so that the 0/1 dummy variables are not re
 :::
 
 ::: {.fragment .fade-in-then-semi-out}
-2.  **Combine** the six specification into **principal components** that explain at least 70% of the variance.
+2.  **Combine** the six specifications into **principal components** that explain at least 70% of the variance.
     - Removes overlap and keeps key information.
 :::
 
@@ -320,12 +319,12 @@ ggplot(var_wide, aes(component, `percent variance`)) +
 Percent variance is the share of the total information that each component holds. PC1 always holds the most.
 :::
 
-## Number of component retained {.smaller}
+## Number of components retained {.smaller}
 
 ::: incremental
 - **PC1** explains **`r round(pc1_var, 1)`%** of the variance in the six specifications (@tbl-var, @fig-scree).
 
-- The first **`r n_pc` PCs** together explain **`r round(cum_var, 1)`%** meeting the **70% threshold**.
+- The first **`r n_pc` PCs** together explain **`r round(cum_var, 1)`%**, meeting the **70% threshold**.
 
 - Each remaining component adds only **`r round(next_var, 1)`% or less**.
 :::
@@ -339,10 +338,6 @@ Percent variance is the share of the total information that each component holds
 ::: notes
 The 70% threshold is set in step_pca(). R keeps the smallest number of components whose cumulative variance reaches 70%.
 :::
-
-
-
-
 
 ```{r}
 #| label: fit-model
@@ -388,8 +383,6 @@ brand_terms <- c("brand_group_apple", "brand_group_motorola", "brand_group_oppo"
                  "brand_group_Other")
 ```
 
-
-
 ```{r}
 #| label: base-levels
 #| output: false
@@ -399,19 +392,14 @@ levels(phones_clean$has_nfc)
 levels(phones_clean$brand_group)
 ```
 
-
-
-
-
-
 # Regression Results {background-color="#1f4e79"}
 
 ## What drives smartphone prices? {.smaller}
 
 Dependent variable: **log price**. Base categories: **Xiaomi**, **no 5G**, **no NFC**. We read the **significance level** and the **sign** only, not the size of each coefficient.
 
-::::: {.columns}
-:::: {.column width="55%"}
+:::::: columns
+::: {.column width="55%"}
 ```{r}
 #| label: tbl-specs
 #| tbl-cap: "Components, specifications and features"
@@ -431,12 +419,12 @@ phone_results |>
               column_labels.vlines.style = "solid",
               table_body.vlines.style = "solid")
 ```
-::::
+:::
 
-:::: {.column width="3%"}
-::::
+::: {.column width="3%"}
+:::
 
-:::: {.column width="42%"}
+::: {.column width="42%"}
 ```{r}
 #| label: tbl-brands
 #| tbl-cap: "Brands compared with Xiaomi"
@@ -456,21 +444,20 @@ phone_results |>
               column_labels.vlines.style = "solid",
               table_body.vlines.style = "solid")
 ```
-::::
-:::::
+:::
+::::::
 
 ::: notes
 Linear regression fitted on the training data with the tidymodels workflow. As the brief asks, we only fit and interpret the model; we do not evaluate its fit or prediction. A positive sign means a higher log price, and so a higher price.
 :::
 
-
 ## Specifications vs price {.smaller}
 
 ::: incremental
--   **Overall performance (PC1):** **positive significant influence** on price at the **0.1% level** (@tbl-specs); stronger all-round phones are priced higher.
--   **Storage and speed vs camera (PC2):** **positive significant influence** at the **0.1% level**; storage- and speed-focused phones are priced higher than camera-focused ones.
--   **Screen size:** **positive significant influence** at the **0.1% level**; larger screens, higher price.
--   **Battery capacity:** **negative significant influence** at the **0.1% level**; larger batteries, lower price.
+- **Overall performance (PC1):** **positive significant influence** on price at the **0.1% level** (@tbl-specs); stronger all-round phones are priced higher.
+- **Storage and speed vs camera (PC2):** **positive significant influence** at the **0.1% level**; storage- and speed-focused phones are priced higher than camera-focused ones.
+- **Screen size:** **positive significant influence** at the **0.1% level**; larger screens, higher price.
+- **Battery capacity:** **negative significant influence** at the **0.1% level**; larger batteries, lower price.
 :::
 
 . . .
@@ -483,8 +470,6 @@ Price follows the performance bundle and screen size, not battery size or camera
 All four effects hold after taking the other variables in the model into account. PC1 and PC2 are named from their loadings on the previous slides. PC1: processor, RAM, storage, refresh rate and both cameras all load positively, so a higher PC1 means a stronger all-round phone. PC2: storage and processor load positively and the two cameras negatively, so among phones with similar overall performance, a higher PC2 means a storage- and speed-focused phone. Large batteries are a main selling point of budget phones, which likely explains the negative sign.
 :::
 
-
-
 ## Features and brands vs price {.smaller}
 
 ```{r}
@@ -494,8 +479,8 @@ brand_results <- phone_results |>
   filter(term %in% brand_terms)
 ```
 
-::::: {.columns}
-:::: {.column width="50%"}
+:::::: columns
+::: {.column width="50%"}
 ```{r}
 #| label: fig-brand
 #| fig-cap: "Brand coefficients compared with Xiaomi (teal = significant at 5%, red = not significant)"
@@ -508,24 +493,22 @@ brand_results |>
   labs(x = "Brand", y = "Coefficient (log price) vs Xiaomi") +
   theme_bw(base_size = 16)
 ```
-::::
+:::
 
 :::: {.column width="50%"}
 ::: fragment
--   Phones **with NFC:** significantly **higher** price than without NFC (0.1% level).
--   Phones **with 5G:** significantly **higher** price than without 5G (5% level).
--   **Apple, Samsung** (0.1%) and **Vivo** (1%): significantly **higher** than Xiaomi (@tbl-brands, @fig-brand).
--   **Motorola:** significantly **lower** than Xiaomi (1% level).
--   **Oppo, Realme** and **other brands:** **not significantly different** from Xiaomi.
+- Phones **with NFC:** significantly **higher** price than without NFC (0.1% level).
+- Phones **with 5G:** significantly **higher** price than without 5G (5% level).
+- **Apple, Samsung** (0.1%) and **Vivo** (1%): significantly **higher** than Xiaomi (@tbl-brands, @fig-brand).
+- **Motorola:** significantly **lower** than Xiaomi (1% level).
+- **Oppo, Realme** and **other brands:** **not significantly different** from Xiaomi.
 :::
 ::::
-:::::
+::::::
 
 ::: notes
 Every brand comparison is against Xiaomi, the base category, for phones with similar specifications and features. So the brand gap is a brand premium, not a difference in hardware.
 :::
-
-
 
 ## Summary of key findings
 
@@ -539,7 +522,6 @@ Every brand comparison is against Xiaomi, the base category, for phones with sim
 Point 1 comes from the PCA; points 2 and 3 come from the regression.
 :::
 
-
 # Recommendations {background-color="#1f4e79"}
 
 ## Recommendation 1: performance
@@ -551,9 +533,9 @@ Overall performance (PC1) and the storage and speed focus (PC2) both have a **po
 . . .
 
 ::: {.callout-tip title="Action for manufacturers"}
--   To launch a **higher-priced model**, upgrade the **whole performance bundle**: processor, RAM, storage and refresh rate.
--   Favour **storage and processing** over extra camera megapixels: storage- and speed-focused phones are priced higher than camera-focused ones.
--   Use **large batteries** to add value to **budget models**, not to charge more.
+- To launch a **higher-priced model**, upgrade the **whole performance bundle**: processor, RAM, storage and refresh rate.
+- Favour **storage and processing** over extra camera megapixels: storage- and speed-focused phones are priced higher than camera-focused ones.
+- Use **large batteries** to add value to **budget models**, not to charge more.
 :::
 
 ::: notes
@@ -569,8 +551,8 @@ With similar specifications, **Apple, Samsung and Vivo** are priced significantl
 . . .
 
 ::: {.callout-tip title="Action for retailers and brands"}
--   Display **Xiaomi** phones next to **Samsung and Vivo** models with matching specifications, and promote them as **"same specifications, lower price"**.
--   **Motorola**, priced below Xiaomi, should compete on **specifications per price** rather than raise prices.
+- Display **Xiaomi** phones next to **Samsung and Vivo** models with matching specifications, and promote them as **"same specifications, lower price"**.
+- **Motorola**, priced below Xiaomi, should compete on **specifications per price** rather than raise prices.
 :::
 
 ::: notes
