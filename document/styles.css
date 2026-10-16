@@ -74,7 +74,7 @@
 .reveal caption {
   font-size: 15px;
   color: var(--muted);
-  text-align: left;
+  text-align: center;
 }
 
 /* ---- Code ---------------------------------------------------------- */
@@ -94,14 +94,17 @@
   border-left-color: var(--blue) !important;
   background: #EEF5FB !important;
 }
-.reveal .callout.callout-tip .callout-header { background: #EEF5FB !important; }
+.reveal .callout.callout-tip .callout-header,
+.reveal .callout.callout-tip .callout-title { background: #EEF5FB !important; }
 .reveal .callout.callout-important {               /* "Bottom line" box */
   border-left-color: var(--orange) !important;
   background: var(--navy) !important;
   color: #fff;
 }
-.reveal .callout.callout-important .callout-header { background: var(--navy) !important; }
+.reveal .callout.callout-important .callout-header,
+.reveal .callout.callout-important .callout-title { background: var(--navy) !important; }
 .reveal .callout.callout-important .callout-title-container,
+.reveal .callout.callout-important .callout-title,
 .reveal .callout.callout-important strong { color: #fff; }
 
 /* ---- Tabsets ------------------------------------------------------- */
@@ -212,6 +215,8 @@
   width: 120px;
   height: 5px;
   margin-top: 18px;
+  margin-left: auto;
+  margin-right: auto;
   border-radius: 3px;
   background: var(--orange);
 }
@@ -230,3 +235,4 @@
 .reveal .grid2.compact .card { font-size: 0.74em; padding: 8px 12px; }
 .reveal .grid2.compact .big { font-size: 21px; margin-bottom: 2px; }
 .reveal .grid2.compact .card .so { margin-top: 4px; padding-top: 4px; }
+
