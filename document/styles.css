@@ -1,0 +1,232 @@
+/* =====================================================================
+   ETW2500 Group 29 - shared slide styles
+   Used by every .qmd through `css: styles.css` in the YAML.
+   Palette matches the charts: navy = section slides and headings,
+   blue = memory/positive, orange = camera/negative.
+   ===================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Source+Sans+3:wght@400;600;700&display=swap");
+
+:root {
+  --navy: #1F4E79;
+  --blue: #2C7FB8;
+  --orange: #D95F02;
+  --ink: #1F2933;
+  --muted: #5F6B7A;
+  --paper: #F4F7FA;
+  --line: #D9E2EC;
+}
+
+/* ---- Type ---------------------------------------------------------- */
+.reveal {
+  font-family: "Source Sans 3", "Source Sans Pro", Helvetica, Arial, sans-serif;
+  color: var(--ink);
+}
+.reveal h1, .reveal h2, .reveal h3 {
+  font-family: "Montserrat", Helvetica, Arial, sans-serif;
+  color: var(--navy);
+  text-transform: none;
+  letter-spacing: -0.01em;
+}
+/* !important: Quarto's own theme rule otherwise wins and doubles the size */
+.reveal .slides section h2,
+.reveal .slide h2 {
+  font-size: 38px !important;
+  font-weight: 700;
+  line-height: 1.15 !important;
+  position: relative;
+  padding-bottom: 12px;
+  margin-bottom: 22px;
+  border-bottom: 2px solid var(--line);
+}
+.reveal .slides section h2::after {          /* short blue accent under each title */
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 90px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--blue);
+}
+.reveal strong { color: var(--navy); }
+.reveal a { color: var(--blue); }
+.reveal ul li::marker { color: var(--blue); }
+.reveal li { margin-bottom: 0.25em; }
+
+/* ---- Section slides (navy background) ------------------------------ */
+.reveal .slides section.has-dark-background h1 {
+  color: #fff;
+  font-size: 64px;
+  font-weight: 700;
+}
+.reveal .slides section.has-dark-background p {
+  color: #CFE0F0;
+  font-size: 28px;
+}
+
+/* ---- Footer, slide number, captions -------------------------------- */
+.reveal .footer { font-size: 16px; color: var(--muted); }
+.reveal .slide-number { color: var(--navy); background: transparent; font-size: 16px; }
+.reveal figcaption,
+.reveal .caption,
+.reveal .table-caption,
+.reveal caption {
+  font-size: 15px;
+  color: var(--muted);
+  text-align: left;
+}
+
+/* ---- Code ---------------------------------------------------------- */
+.reveal div.sourceCode {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  border-radius: 6px;
+}
+
+/* ---- Callouts ------------------------------------------------------ */
+.reveal .callout {
+  border-radius: 8px;
+  border-left-width: 6px !important;
+}
+.reveal .callout.callout-tip {
+  border-left-color: var(--blue) !important;
+  background: #EEF5FB !important;
+}
+.reveal .callout.callout-tip .callout-header { background: #EEF5FB !important; }
+.reveal .callout.callout-important {               /* "Bottom line" box */
+  border-left-color: var(--orange) !important;
+  background: var(--navy) !important;
+  color: #fff;
+}
+.reveal .callout.callout-important .callout-header { background: var(--navy) !important; }
+.reveal .callout.callout-important .callout-title-container,
+.reveal .callout.callout-important strong { color: #fff; }
+
+/* ---- Tabsets ------------------------------------------------------- */
+.reveal .panel-tabset [role="tab"] {
+  font-family: "Montserrat", Helvetica, Arial, sans-serif;
+  font-size: 18px;
+  color: var(--muted);
+}
+.reveal .panel-tabset [role="tab"][aria-selected="true"] {
+  color: var(--navy);
+  font-weight: 700;
+  border-bottom: 3px solid var(--blue);
+}
+
+/* ---- Cards (component summaries, key findings) --------------------- */
+.reveal .card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-top: 5px solid var(--blue);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 0.85em;
+}
+.reveal .card.orange { border-top-color: var(--orange); }
+.reveal .card.navy   { border-top-color: var(--navy); }
+.reveal .card p { margin: 0 0 6px; }
+.reveal .card ul { margin: 4px 0 0; }
+
+.reveal .kicker {
+  display: block;
+  font-family: "Montserrat", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.reveal .big {
+  display: block;
+  font-family: "Montserrat", Helvetica, Arial, sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--navy);
+}
+.reveal .hero {
+  display: block;
+  font-family: "Montserrat", Helvetica, Arial, sans-serif;
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--blue);
+}
+
+.reveal .grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+.reveal .grid2 .card { margin-bottom: 0; }
+
+/* ---- Low vs high comparison rows ----------------------------------- */
+/* Each row: label | low-score value | high-score value                 */
+.reveal .stat,
+.reveal .stat-head {
+  display: grid;
+  grid-template-columns: 1fr 118px 128px;
+  align-items: baseline;
+  column-gap: 10px;
+}
+.reveal .stat {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+.reveal .stat p, .reveal .stat-head p { display: contents; }
+.reveal .stat-label { color: var(--ink); font-size: 0.9em; }
+.reveal .stat-low,
+.reveal .stat-value {
+  font-family: "Montserrat", Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+.reveal .stat-low { color: var(--muted); font-size: 0.9em; }
+.reveal .stat-value { color: var(--blue); font-size: 1.05em; }
+.reveal .stat.down .stat-value { color: var(--orange); }
+.reveal .stat-head span { text-align: right; }
+.reveal .stat-head span:first-child { text-align: left; }
+.reveal .stat-head {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--line);
+}
+.reveal .note-line { font-size: 0.85em; color: var(--muted); margin-top: 10px; }
+.reveal .card ul { margin: 4px 0 0 1.1em; padding-left: 0; }
+.reveal .note-line { display: block; }
+/* Footer stays readable on navy section slides */
+.reveal.has-dark-background .footer,
+.reveal.has-dark-background .slide-number { color: #CFE0F0; }
+.reveal .slides section.has-dark-background h1::after {   /* accent under section titles */
+  content: "";
+  display: block;
+  width: 120px;
+  height: 5px;
+  margin-top: 18px;
+  border-radius: 3px;
+  background: var(--orange);
+}
+.reveal .callout.callout-important a { color: #9CC9EE; }
+/* Practical implication line at the bottom of a card ("Use:", "Size:") */
+.reveal .card .so {
+  display: block;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+  font-size: 0.92em;
+  color: var(--muted);
+}
+/* Denser 2 x 2 grid for the summary slide */
+.reveal .grid2.compact { gap: 10px 14px; }
+.reveal .grid2.compact .card { font-size: 0.74em; padding: 8px 12px; }
+.reveal .grid2.compact .big { font-size: 21px; margin-bottom: 2px; }
+.reveal .grid2.compact .card .so { margin-top: 4px; padding-top: 4px; }
