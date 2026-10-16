@@ -23,7 +23,7 @@ execute:
 
 ## Presenters
 
-- Ahmad Sufi (group leader, student id: )
+- Ahmad Sufi (group leader, student id: 34441352)
 - Yang Shng Chun (student id: 35183543)
 - Tan Ethan (student id: 35211520)
 - Hew Kai Feng (student id: 35310480)
