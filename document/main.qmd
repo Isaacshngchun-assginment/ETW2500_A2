@@ -10,7 +10,6 @@ format:
     preview-links: true
     incremental: false
     fig-align: center
-    code-line-numbers: true
     background-transition: fade
     footer: "ETW2500 Unsupervised Learning | Group 29"
     css: styles.css
